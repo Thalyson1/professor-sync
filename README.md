@@ -1,0 +1,2 @@
+# professor-sync
+Professor Sync é uma plataforma web desenvolvida para professores da Rede Estadual da Paraíba que utilizam o SIAGE.  Seu objetivo é centralizar todo o fluxo de trabalho do professor, desde o planejamento das aulas até o envio das informações para o SIAGE, reduzindo drasticamente o tempo gasto com tarefas repetitivas.  O SIAGE deixa de ser o ambiente principal de trabalho e passa a ser apenas o sistema oficial para sincronização das informações.
