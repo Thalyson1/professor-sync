@@ -43,6 +43,15 @@ export const navigationItems: NavigationItem[] = [
 ];
 
 export function getPageMetadata(pathname: string) {
+  if (pathname.startsWith("/turmas/")) {
+    return {
+      href: pathname,
+      label: "Diário da turma",
+      description:
+        "Acompanhe visão geral, planejamento e registros provisórios da turma selecionada."
+    };
+  }
+
   return (
     navigationItems.find((item) => item.href === pathname) ?? {
       href: pathname,
@@ -50,4 +59,8 @@ export function getPageMetadata(pathname: string) {
       description: "Área principal da plataforma."
     }
   );
+}
+
+export function isPathActive(currentPath: string, itemHref: string) {
+  return currentPath === itemHref || currentPath.startsWith(`${itemHref}/`);
 }

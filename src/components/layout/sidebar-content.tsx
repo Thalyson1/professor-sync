@@ -1,4 +1,4 @@
-import { navigationItems } from "@/lib/navigation";
+import { isPathActive, navigationItems } from "@/lib/navigation";
 
 import { NavItem } from "./nav-item";
 
@@ -33,7 +33,7 @@ export function SidebarContent({
               <NavItem
                 href={item.href}
                 label={item.label}
-                isActive={currentPath === item.href}
+                isActive={isPathActive(currentPath, item.href)}
                 onNavigate={onNavigate}
               />
             </li>
