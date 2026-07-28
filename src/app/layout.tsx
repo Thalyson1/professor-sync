@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
+import { ThemeScript } from "@/components/layout/theme-script";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,8 +17,11 @@ type RootLayoutProps = Readonly<{
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang="pt-BR">
-      <body>{children}</body>
+    <html lang="pt-BR" suppressHydrationWarning>
+      <body>
+        <ThemeScript />
+        {children}
+      </body>
     </html>
   );
 }
