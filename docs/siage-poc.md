@@ -108,6 +108,36 @@ Arquivos gerados:
 - `scripts/siage-poc/output/raw/`
 - `scripts/siage-poc/output/normalized/siage-sync-preview.json`
 
+### 3. Importação controlada para o Supabase
+
+Objetivos:
+
+- ler o preview normalizado do SIAGE;
+- validar coleções e referências antes de gravar;
+- criar um `sync_run` para auditoria;
+- executar `upserts` em lotes, respeitando as chaves estrangeiras;
+- registrar falhas em `sync_errors`;
+- não excluir registros nesta primeira versão.
+
+Comandos:
+
+```bash
+npm run siage:import -- --dry-run
+npm run siage:import
+```
+
+Variáveis esperadas para a importação real:
+
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+Observações:
+
+- `--dry-run` não escreve no Supabase.
+- O importador usa o arquivo `scripts/siage-poc/output/normalized/siage-sync-preview.json`.
+- O importador não faz nenhuma escrita no SIAGE.
+- A importação atual não remove registros antigos; ela apenas insere ou atualiza com `upsert`.
+
 ## Estrutura de saída
 
 O preview normalizado segue esta base:
