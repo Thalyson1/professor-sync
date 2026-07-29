@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint .",
     "siage:poc": "node scripts/siage-poc/run.mjs",
-    "siage:poc:install": "playwright install chromium"
+    "siage:poc:install": "playwright install chromium",
+    "siage:read": "node scripts/siage-poc/sync-read.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

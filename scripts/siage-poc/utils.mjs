@@ -13,6 +13,8 @@ export const outputRoot = path.join(pocRoot, "output");
 export const screenshotRoot = path.join(outputRoot, "screenshots");
 export const htmlRoot = path.join(outputRoot, "html");
 export const networkRoot = path.join(outputRoot, "network");
+export const rawRoot = path.join(outputRoot, "raw");
+export const normalizedRoot = path.join(outputRoot, "normalized");
 export const sessionRoot = path.join(pocRoot, "session");
 export const sessionFile = path.join(sessionRoot, "siage-session.json");
 export const classesFile = path.join(outputRoot, "siage-classes.json");
@@ -188,6 +190,8 @@ export async function ensureDirectories() {
     fs.mkdir(screenshotRoot, { recursive: true }),
     fs.mkdir(htmlRoot, { recursive: true }),
     fs.mkdir(networkRoot, { recursive: true }),
+    fs.mkdir(rawRoot, { recursive: true }),
+    fs.mkdir(normalizedRoot, { recursive: true }),
     fs.mkdir(sessionRoot, { recursive: true }),
   ]);
 }
@@ -254,6 +258,11 @@ export async function savePageArtifacts(page, label, saveHtml) {
 
 export async function writeJsonFile(filePath, data) {
   await fs.writeFile(filePath, JSON.stringify(data, null, 2), "utf8");
+}
+
+export async function readJsonFile(filePath) {
+  const content = await fs.readFile(filePath, "utf8");
+  return JSON.parse(content);
 }
 
 export function classifySiageRoute(rawUrl) {
@@ -336,6 +345,14 @@ const SENSITIVE_FIELD_FRAGMENTS = [
 
 export function sanitizeJsonPayload(value) {
   return sanitizeValue(value, "");
+}
+
+export function sanitizeDiagnosticValue(value) {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  return maskString(value);
 }
 
 function sanitizeValue(value, keyName) {
