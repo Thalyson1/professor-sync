@@ -9,6 +9,7 @@ Esta prova de conceito foi criada de forma isolada para investigar a leitura man
 - salvar o estado de sessão localmente para reaproveitar testes;
 - navegar pelas áreas disponíveis e localizar páginas relacionadas a turmas e disciplinas;
 - extrair turmas visíveis e, quando possível, a lista de alunos;
+- observar requisições reais `fetch` e `XHR` disparadas manualmente no SIAGE;
 - salvar os resultados apenas em arquivos locais ignorados pelo Git.
 
 ## Instalação
@@ -79,7 +80,10 @@ Fluxo esperado:
 1. O Playwright abre um navegador visível.
 2. O usuário faz login manualmente no SIAGE.
 3. Depois do carregamento da área autenticada, o usuário volta ao terminal e pressiona `Enter`.
-4. O script salva a sessão local, captura telas, tenta identificar páginas úteis e grava os JSONs locais.
+4. O script salva a sessão local.
+5. O terminal pede `Enter` para iniciar a captura de rede.
+6. O usuário navega manualmente no SIAGE.
+7. O terminal pede `Enter` novamente para encerrar e salvar o resumo.
 
 ## Arquivos gerados
 
@@ -88,6 +92,8 @@ Os artefatos ficam em `scripts/siage-poc/` e estão protegidos no `.gitignore`.
 - `session/siage-session.json`: sessão local do navegador.
 - `output/siage-classes.json`: turmas encontradas na inspeção.
 - `output/siage-students.json`: alunos encontrados por turma.
+- `output/network-summary.json`: resumo das requisições capturadas.
+- `output/network/`: cópias sanitizadas de respostas JSON observadas.
 - `output/screenshots/`: capturas das páginas relevantes.
 - `output/html/`: HTML salvo para análise local, quando `--save-html` não for desativado.
 
@@ -98,12 +104,13 @@ Durante a execução, o script registra:
 - opções reconhecidas no início, com origem `cli`, `env` ou `default`;
 - página atual;
 - título da página;
+- contexto de rota observado, como `listagem-de-turmas`, `pagina-da-turma`, `frequencia`, `cadastro-frequencia`, `registro-aula` e `avaliacoes`;
 - menus encontrados;
 - links encontrados;
 - quantidade de turmas por página;
 - quantidade de alunos por turma;
 - erros de navegação;
-- chamadas de rede potencialmente relevantes para turmas e disciplinas.
+- chamadas `fetch` e `XHR` com método, URL sanitizada, status, `resourceType`, `content-type` e tamanho aproximado da resposta.
 
 As URLs registradas passam por sanitização básica para evitar exibir parâmetros sensíveis comuns, mas isso não substitui revisão manual antes de compartilhar qualquer saída.
 
@@ -112,6 +119,7 @@ As URLs registradas passam por sanitização básica para evitar exibir parâmet
 - Não armazene usuário ou senha no código.
 - Não versione o arquivo de sessão do Playwright.
 - Não envie para o Git os JSONs de alunos, capturas de tela ou HTML com dados pessoais.
+- Não envie para o Git as respostas JSON sanitizadas sem revisão humana.
 - Revise manualmente qualquer artefato antes de compartilhar fora do ambiente local.
 - Não tente contornar CAPTCHA, autenticação adicional ou bloqueios do SIAGE.
 
@@ -119,6 +127,7 @@ As URLs registradas passam por sanitização básica para evitar exibir parâmet
 
 - A detecção de login autenticado é heurística e pode precisar de ajuste conforme a instalação real do SIAGE.
 - A descoberta de turmas e alunos depende da estrutura HTML disponível após o login.
+- A classificação automática de endpoints é heurística e serve apenas para orientar a análise inicial.
 - O script não interage com frequência, notas, lançamento de aulas ou escrita de dados.
 - O mapeamento de menus e páginas ainda é exploratório e pode exigir inspeção manual complementar.
 - Se o SIAGE usar iframes, modais complexos ou paginação interna, pode ser necessário adaptar a navegação.

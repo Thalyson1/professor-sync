@@ -1,23 +1,23 @@
 import fs from "node:fs/promises";
+import path from "node:path";
 
 import { chromium } from "playwright";
 
-import { CLASS_KEYWORDS } from "./keywords.mjs";
 import {
-  classesFile,
-  collectNavigationSummary,
+  buildNetworkFileName,
+  classifyEndpoint,
+  classifySiageRoute,
   ensureDirectories,
-  extractClassRecords,
-  extractStudents,
   logItem,
   logSection,
+  networkRoot,
+  networkSummaryFile,
   parseArgs,
-  sameOrigin,
+  sanitizeJsonPayload,
   sanitizeUrl,
   savePageArtifacts,
   sessionFile,
-  studentsFile,
-  uniqueBy,
+  shouldTrackRequest,
   waitForEnter,
   writeJsonFile,
 } from "./utils.mjs";
@@ -43,26 +43,133 @@ async function main() {
     storageState ? { storageState } : undefined
   );
   const page = await context.newPage();
-  const origin = new URL(options.url).origin;
+
+  const captureState = {
+    active: false,
+    currentRouteLabel: "outra",
+    requests: [],
+    requestMap: new Map(),
+    routeHits: {
+      "listagem-de-turmas": 0,
+      "pagina-da-turma": 0,
+      frequencia: 0,
+      "cadastro-frequencia": 0,
+      "registro-aula": 0,
+      avaliacoes: 0,
+    },
+  };
 
   page.on("framenavigated", (frame) => {
-    if (frame === page.mainFrame()) {
-      logItem("Página atual", sanitizeUrl(frame.url()));
+    if (frame !== page.mainFrame()) {
+      return;
+    }
+
+    const currentUrl = frame.url();
+    const routeLabel = classifySiageRoute(currentUrl);
+    captureState.currentRouteLabel = routeLabel;
+
+    logItem("Página atual", sanitizeUrl(currentUrl));
+
+    if (routeLabel !== "outra" && routeLabel !== "diario") {
+      console.log(`[contexto] ${routeLabel}`);
     }
   });
 
-  page.on("response", (response) => {
-    const responseUrl = response.url();
-    const lowerUrl = responseUrl.toLowerCase();
-
-    if (
-      sameOrigin(responseUrl, origin) &&
-      CLASS_KEYWORDS.some((keyword) => lowerUrl.includes(keyword))
-    ) {
-      console.log(
-        `[network] ${response.status()} ${response.request().method()} ${sanitizeUrl(responseUrl)}`
-      );
+  page.on("request", (request) => {
+    if (!captureState.active || !shouldTrackRequest(request)) {
+      return;
     }
+
+    const requestUrl = sanitizeUrl(request.url());
+    const routeLabel = captureState.currentRouteLabel;
+
+    captureState.requestMap.set(request, {
+      id: `${captureState.requests.length + captureState.requestMap.size + 1}`,
+      method: request.method(),
+      url: requestUrl,
+      resourceType: request.resourceType(),
+      routeLabel,
+      startedAt: new Date().toISOString(),
+      classifiedAs: classifyEndpoint(requestUrl),
+    });
+  });
+
+  page.on("response", async (response) => {
+    if (!captureState.active) {
+      return;
+    }
+
+    const request = response.request();
+
+    if (!shouldTrackRequest(request)) {
+      return;
+    }
+
+    const requestRecord = captureState.requestMap.get(request);
+
+    if (!requestRecord) {
+      return;
+    }
+
+    const headers = response.headers();
+    const contentType = headers["content-type"] || "unknown";
+    const isJson = contentType.toLowerCase().includes("application/json");
+
+    let approxSize = Number.parseInt(headers["content-length"] ?? "", 10);
+
+    if (!Number.isFinite(approxSize)) {
+      approxSize = null;
+    }
+
+    let networkFile = null;
+
+    if (isJson) {
+      const payload = await safeReadJson(response);
+
+      if (payload !== null) {
+        const sanitizedPayload = sanitizeJsonPayload(payload);
+        networkFile = await saveSanitizedNetworkPayload(
+          captureState.requests.length + 1,
+          requestRecord,
+          sanitizedPayload
+        );
+
+        if (approxSize === null) {
+          approxSize = Buffer.byteLength(JSON.stringify(sanitizedPayload), "utf8");
+        }
+      }
+    }
+
+    const record = {
+      ...requestRecord,
+      status: response.status(),
+      contentType,
+      approxSize,
+      capturedAt: new Date().toISOString(),
+      networkFile,
+    };
+
+    captureState.requests.push(record);
+    captureState.requestMap.delete(request);
+
+    if (record.routeLabel in captureState.routeHits) {
+      captureState.routeHits[record.routeLabel] += 1;
+    }
+
+    console.log(
+      `[network:${record.routeLabel}] ${record.status} ${record.method} ${record.resourceType} ${record.contentType} ${record.approxSize ?? "unknown"}B ${record.url}`
+    );
+  });
+
+  page.on("requestfailed", (request) => {
+    if (!captureState.active || !shouldTrackRequest(request)) {
+      return;
+    }
+
+    const requestUrl = sanitizeUrl(request.url());
+    console.error(
+      `[network:error] ${request.method()} ${request.resourceType()} ${requestUrl} ${request.failure()?.errorText ?? "request failed"}`
+    );
   });
 
   try {
@@ -79,7 +186,7 @@ async function main() {
       logSection("Login manual");
       console.log("Faça o login manualmente no navegador aberto pelo Playwright.");
       console.log("Depois que a área autenticada carregar, volte ao terminal e pressione Enter.");
-      await waitForEnter("Pressione Enter para continuar a inspeção.");
+      await waitForEnter("Pressione Enter quando o login estiver concluído.");
       await page.waitForLoadState("networkidle").catch(() => undefined);
     }
 
@@ -88,194 +195,60 @@ async function main() {
 
     await context.storageState({ path: sessionFile });
     logItem("Sessão salva", sessionFile);
-
     await savePageArtifacts(page, "02-authenticated", options.saveHtml);
 
-    const candidatePages = await discoverPages(page, origin, options.maxPages);
-    const discoveredClasses = [];
+    logSection("Captura interativa");
+    console.log("Pressione Enter para iniciar a captura de requisições fetch/XHR.");
+    await waitForEnter("Captura pronta para iniciar.");
+    captureState.active = true;
+    console.log("Captura iniciada. Navegue manualmente no SIAGE.");
+    console.log("Ao terminar, volte ao terminal e pressione Enter para encerrar.");
+    await waitForEnter("Pressione Enter para finalizar a captura.");
+    captureState.active = false;
 
-    for (const candidate of candidatePages) {
-      logSection(`Inspecionando ${candidate.label}`);
-      console.log(`Visitando: ${sanitizeUrl(candidate.href)}`);
-
-      try {
-        if (page.url() !== candidate.href) {
-          await page.goto(candidate.href, { waitUntil: "domcontentloaded" });
-          await page.waitForLoadState("networkidle").catch(() => undefined);
-        }
-
-        await logPageState(page);
-        await savePageArtifacts(page, `page-${candidate.label}`, options.saveHtml);
-
-        const classes = await extractClassRecords(page);
-        logItem("Quantidade de turmas encontradas", classes.length);
-
-        for (const classRecord of classes) {
-          discoveredClasses.push({
-            ...classRecord,
-            inspectedFrom: candidate.href,
-            inspectedLabel: candidate.label,
-          });
-        }
-      } catch (error) {
-        console.error(
-          `Erro de navegação em ${sanitizeUrl(candidate.href)}: ${
-            error instanceof Error ? error.message : String(error)
-          }`
-        );
-      }
-    }
-
-    const uniqueClasses = uniqueBy(
-      discoveredClasses,
-      (item) => `${item.href || item.title}|${item.text}`
-    );
-
-    await writeJsonFile(classesFile, uniqueClasses);
-    logItem("Arquivo de turmas", classesFile);
-
-    const studentsByClass = [];
-
-    for (const classRecord of uniqueClasses) {
-      if (!classRecord.href || !sameOrigin(classRecord.href, origin)) {
-        continue;
-      }
-
-      logSection(`Abrindo turma ${classRecord.title}`);
-
-      try {
-        await page.goto(classRecord.href, { waitUntil: "domcontentloaded" });
-        await page.waitForLoadState("networkidle").catch(() => undefined);
-
-        await logPageState(page);
-        await savePageArtifacts(
-          page,
-          `class-${classRecord.title}`,
-          options.saveHtml
-        );
-
-        const students = uniqueBy(
-          await extractStudents(page),
-          (item) => `${item.name}|${item.raw}`
-        );
-
-        logItem("Quantidade de alunos", students.length);
-
-        studentsByClass.push({
-          class: {
-            title: classRecord.title,
-            href: classRecord.href,
-            text: classRecord.text,
-          },
-          pageUrl: page.url(),
-          students,
-        });
-      } catch (error) {
-        console.error(
-          `Erro ao abrir turma ${classRecord.title}: ${
-            error instanceof Error ? error.message : String(error)
-          }`
-        );
-      }
-    }
-
-    await writeJsonFile(studentsFile, studentsByClass);
-    logItem("Arquivo de alunos", studentsFile);
+    await savePageArtifacts(page, "03-final-state", options.saveHtml);
+    await writeJsonFile(networkSummaryFile, buildNetworkSummary(captureState.requests, captureState.routeHits));
 
     logSection("Resumo");
-    logItem("Turmas extraídas", uniqueClasses.length);
-    logItem("Turmas com alunos", studentsByClass.length);
-    console.log("Feche o navegador quando terminar a inspeção visual.");
-    await page.waitForEvent("close");
+    logItem("Arquivo de resumo", networkSummaryFile);
+    logItem("Requisições capturadas", captureState.requests.length);
+    logItem("JSONs sanitizados", captureState.requests.filter((item) => item.networkFile).length);
   } finally {
     await browser.close();
   }
 }
 
-async function discoverPages(page, origin, maxPages) {
-  const { menus, links } = await collectNavigationSummary(page);
-  const title = await page.title();
-
-  logItem("Título da página", title || "(sem título)");
-  logItem(
-    "Menus encontrados",
-    menus.length ? menus.map((item) => item.label).join(" | ") : "nenhum"
-  );
-  logItem(
-    "Links encontrados",
-    links.length
-      ? links
-          .slice(0, 20)
-          .map((item) => `${item.text || "(sem texto)"} -> ${sanitizeUrl(item.href)}`)
-          .join(" | ")
-      : "nenhum"
-  );
-
-  const rankedLinks = links
-    .filter((item) => item.href && sameOrigin(item.href, origin))
-    .map((item) => ({
-      href: item.href,
-      label: slugLabel(item.text || item.href),
-      score: scoreLink(item.text, item.href),
-    }))
-    .filter((item) => item.score > 0);
-
-  const uniqueLinks = uniqueBy(
-    [
-      {
-        href: page.url(),
-        label: "landing-page",
-        score: 100,
-      },
-      ...rankedLinks,
-    ],
-    (item) => item.href
-  );
-
-  return uniqueLinks
-    .sort((left, right) => right.score - left.score)
-    .slice(0, maxPages);
+function buildNetworkSummary(records, routeHits) {
+  return {
+    generatedAt: new Date().toISOString(),
+    totalRequests: records.length,
+    highlightedRoutes: routeHits,
+    endpointClassification: summarizeEndpointClasses(records),
+    requests: records,
+  };
 }
 
-function scoreLink(text, href) {
-  const value = `${text || ""} ${href || ""}`.toLowerCase();
+function summarizeEndpointClasses(records) {
+  const summary = {
+    turmas: 0,
+    alunos: 0,
+    frequencia: 0,
+    avaliacoes: 0,
+    "registro-de-aula": 0,
+    disciplinas: 0,
+    "nao-classificado": 0,
+  };
 
-  if (value.includes("turma") || value.includes("disciplina")) {
-    return 100;
+  for (const record of records) {
+    if (!(record.classifiedAs in summary)) {
+      summary["nao-classificado"] += 1;
+      continue;
+    }
+
+    summary[record.classifiedAs] += 1;
   }
 
-  if (value.includes("aluno") || value.includes("diario") || value.includes("diário")) {
-    return 80;
-  }
-
-  if (CLASS_KEYWORDS.some((keyword) => value.includes(keyword))) {
-    return 50;
-  }
-
-  return 0;
-}
-
-async function isLikelyAuthenticated(page) {
-  const passwordFields = page.locator('input[type="password"]');
-
-  if ((await passwordFields.count()) > 0) {
-    return false;
-  }
-
-  const bodyText = (await page.locator("body").innerText()).toLowerCase();
-
-  return (
-    bodyText.includes("turma") ||
-    bodyText.includes("disciplina") ||
-    bodyText.includes("diario") ||
-    bodyText.includes("diário") ||
-    bodyText.includes("aluno")
-  );
-}
-
-async function logPageState(page) {
-  logItem("Página atual", sanitizeUrl(page.url()));
-  logItem("Título da página", (await page.title()) || "(sem título)");
+  return summary;
 }
 
 function logStartupOptions(options) {
@@ -289,14 +262,51 @@ function logStartupOptions(options) {
   logItem("saveHtml", `${String(options.saveHtml)} (${options.recognized.saveHtml})`);
 }
 
-function slugLabel(value) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40) || "page";
+async function logPageState(page) {
+  logItem("Página atual", sanitizeUrl(page.url()));
+  logItem("Título da página", (await page.title()) || "(sem título)");
+}
+
+async function isLikelyAuthenticated(page) {
+  const passwordFields = page.locator('input[type="password"]');
+
+  if ((await passwordFields.count()) > 0) {
+    return false;
+  }
+
+  const bodyText = (await page.locator("body").innerText()).toLowerCase();
+
+  return bodyText.includes("turma") || bodyText.includes("diario") || bodyText.includes("diário");
+}
+
+async function saveSanitizedNetworkPayload(index, requestRecord, payload) {
+  const pathname = safePathname(requestRecord.url);
+  const fileName = buildNetworkFileName(
+    index,
+    requestRecord.routeLabel,
+    requestRecord.method,
+    pathname
+  );
+  const filePath = path.join(networkRoot, fileName);
+
+  await writeJsonFile(filePath, payload);
+  return filePath;
+}
+
+async function safeReadJson(response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function safePathname(rawUrl) {
+  try {
+    return new URL(rawUrl).pathname;
+  } catch {
+    return rawUrl;
+  }
 }
 
 async function fileExists(filePath) {

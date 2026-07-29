@@ -12,10 +12,12 @@ export const pocRoot = path.resolve("scripts/siage-poc");
 export const outputRoot = path.join(pocRoot, "output");
 export const screenshotRoot = path.join(outputRoot, "screenshots");
 export const htmlRoot = path.join(outputRoot, "html");
+export const networkRoot = path.join(outputRoot, "network");
 export const sessionRoot = path.join(pocRoot, "session");
 export const sessionFile = path.join(sessionRoot, "siage-session.json");
 export const classesFile = path.join(outputRoot, "siage-classes.json");
 export const studentsFile = path.join(outputRoot, "siage-students.json");
+export const networkSummaryFile = path.join(outputRoot, "network-summary.json");
 
 export function parseArgs(argv) {
   const options = {
@@ -185,6 +187,7 @@ export async function ensureDirectories() {
     fs.mkdir(outputRoot, { recursive: true }),
     fs.mkdir(screenshotRoot, { recursive: true }),
     fs.mkdir(htmlRoot, { recursive: true }),
+    fs.mkdir(networkRoot, { recursive: true }),
     fs.mkdir(sessionRoot, { recursive: true }),
   ]);
 }
@@ -251,6 +254,180 @@ export async function savePageArtifacts(page, label, saveHtml) {
 
 export async function writeJsonFile(filePath, data) {
   await fs.writeFile(filePath, JSON.stringify(data, null, 2), "utf8");
+}
+
+export function classifySiageRoute(rawUrl) {
+  const url = sanitizeUrl(rawUrl).toLowerCase();
+
+  if (url.includes("/diario/minhas-turmas/listagem-turmas/turma/") && url.includes("/frequencia/cadastrar")) {
+    return "cadastro-frequencia";
+  }
+
+  if (url.includes("/diario/minhas-turmas/listagem-turmas/turma/") && url.includes("/frequencia")) {
+    return "frequencia";
+  }
+
+  if (
+    url.includes("/diario/minhas-turmas/listagem-turmas/turma/") &&
+    (url.includes("/registro-aula") || url.includes("/registrar"))
+  ) {
+    return "registro-aula";
+  }
+
+  if (url.includes("/diario/minhas-turmas/listagem-turmas/turma/") && url.includes("/novo-registro-avaliacoes")) {
+    return "avaliacoes";
+  }
+
+  if (url.includes("/diario/minhas-turmas/listagem-turmas/turma/")) {
+    return "pagina-da-turma";
+  }
+
+  if (url.includes("/diario/minhas-turmas/listagem-turmas")) {
+    return "listagem-de-turmas";
+  }
+
+  if (url.includes("/diario")) {
+    return "diario";
+  }
+
+  return "outra";
+}
+
+export function shouldTrackRequest(request) {
+  const resourceType = request.resourceType();
+
+  if (resourceType !== "fetch" && resourceType !== "xhr") {
+    return false;
+  }
+
+  const url = request.url().toLowerCase();
+
+  if (
+    url.endsWith(".js") ||
+    url.endsWith(".css") ||
+    url.endsWith(".png") ||
+    url.endsWith(".jpg") ||
+    url.endsWith(".jpeg") ||
+    url.endsWith(".gif") ||
+    url.endsWith(".svg") ||
+    url.endsWith(".webp") ||
+    url.endsWith(".ico") ||
+    url.endsWith(".woff") ||
+    url.endsWith(".woff2") ||
+    url.endsWith(".ttf") ||
+    url.endsWith(".otf") ||
+    url.endsWith(".map")
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+const SENSITIVE_FIELD_FRAGMENTS = [
+  "nome",
+  "aluno",
+  "cpf",
+  "matricula",
+  "email",
+  "telefone",
+  "documento",
+];
+
+export function sanitizeJsonPayload(value) {
+  return sanitizeValue(value, "");
+}
+
+function sanitizeValue(value, keyName) {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeValue(item, keyName));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nestedValue]) => [
+        key,
+        sanitizeValue(nestedValue, key),
+      ])
+    );
+  }
+
+  if (typeof value === "string") {
+    if (isSensitiveKey(keyName) || containsSensitiveString(value)) {
+      return maskString(value);
+    }
+
+    return value;
+  }
+
+  return value;
+}
+
+function isSensitiveKey(keyName) {
+  const normalizedKey = keyName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  return SENSITIVE_FIELD_FRAGMENTS.some((fragment) => normalizedKey.includes(fragment));
+}
+
+function containsSensitiveString(value) {
+  const normalized = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  return (
+    /\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/.test(normalized) ||
+    /\b[\w.%+-]+@[\w.-]+\.[A-Za-z]{2,}\b/.test(normalized) ||
+    /\b(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?(?:9?\d{4})-?\d{4}\b/.test(normalized) ||
+    /\b[A-ZÀ-Ý][a-zà-ÿ]+(?:\s+[A-ZÀ-Ý][a-zà-ÿ]+){1,}\b/u.test(value)
+  );
+}
+
+function maskString(value) {
+  if (!value) {
+    return value;
+  }
+
+  if (value.length <= 4) {
+    return "[redacted]";
+  }
+
+  return `${value.slice(0, 2)}***${value.slice(-2)}`;
+}
+
+export function buildNetworkFileName(index, label, method, urlPathname) {
+  const baseName = slugify(`${String(index).padStart(3, "0")}-${label}-${method}-${urlPathname}`);
+  return `${baseName || `request-${index}`}.json`;
+}
+
+export function classifyEndpoint(rawUrl) {
+  const value = sanitizeUrl(rawUrl).toLowerCase();
+
+  if (value.includes("frequencia")) {
+    return "frequencia";
+  }
+
+  if (value.includes("avali")) {
+    return "avaliacoes";
+  }
+
+  if (value.includes("registro-aula") || value.includes("registrar")) {
+    return "registro-de-aula";
+  }
+
+  if (value.includes("disciplina")) {
+    return "disciplinas";
+  }
+
+  if (value.includes("aluno")) {
+    return "alunos";
+  }
+
+  if (value.includes("turma")) {
+    return "turmas";
+  }
+
+  return "nao-classificado";
 }
 
 export async function waitForEnter(promptText) {
