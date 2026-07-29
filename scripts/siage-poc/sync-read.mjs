@@ -168,8 +168,10 @@ async function main() {
 
     const classes = [];
     const subjects = [];
+    const teacherAssignments = [];
     const students = [];
-    const enrollments = [];
+    const classEnrollments = [];
+    const assignmentStudents = [];
     const schools = [];
     const classErrors = [];
 
@@ -179,9 +181,17 @@ async function main() {
         schoolExternalId,
         academicYearId: runtime.academicYearId,
       });
+      const normalizedSubject = normalizeSubjectRow(classRow);
+      const normalizedAssignment = normalizeTeacherAssignmentRow({
+        classRow,
+        classExternalId: normalizedClass.externalId,
+        subjectExternalId: normalizedSubject.externalId,
+        professionalEnrollmentId,
+      });
 
       classes.push(normalizedClass);
-      subjects.push(normalizeSubjectRow(classRow));
+      subjects.push(normalizedSubject);
+      teacherAssignments.push(normalizedAssignment);
       schools.push(normalizeSchoolRecord(classRow, schoolExternalId));
 
       try {
@@ -207,18 +217,27 @@ async function main() {
           normalizeStudentRow(studentRow)
         );
 
-        const normalizedEnrollments = classPagePayload.studentRows.map((studentRow) =>
-          normalizeEnrollmentRow({
+        const normalizedClassEnrollments = classPagePayload.studentRows.map((studentRow) =>
+          normalizeClassEnrollmentRow({
             studentRow,
             classExternalId: normalizedClass.externalId,
           })
         );
+        const normalizedAssignmentStudents = classPagePayload.studentRows.map((studentRow) =>
+          normalizeAssignmentStudentRow({
+            studentRow,
+            teacherAssignmentExternalId: normalizedAssignment.externalId,
+          })
+        );
 
         students.push(...normalizedStudents);
-        enrollments.push(...normalizedEnrollments);
+        classEnrollments.push(...normalizedClassEnrollments);
+        assignmentStudents.push(...normalizedAssignmentStudents);
 
-        normalizedClass.studentCount =
-          normalizedClass.studentCount ?? normalizedStudents.length;
+        normalizedClass.studentCount = Math.max(
+          normalizedClass.studentCount ?? 0,
+          normalizedStudents.length
+        );
 
         if (classPagePayload.headerPayload) {
           normalizedClass.rawMetadata = {
@@ -228,14 +247,17 @@ async function main() {
                 classPagePayload.headerPayload
             ),
           };
+          normalizedAssignment.multipleAllocation =
+            getValue(classPagePayload.headerPayload, ["data.eMultiplaLotacao"]) ?? null;
         }
 
         logItem(
-          `Alunos na turma ${normalizedClass.externalId}`,
+          `Alunos na atribuição ${normalizedAssignment.externalId}`,
           normalizedStudents.length
         );
       } catch (error) {
         classErrors.push({
+          teacherAssignmentExternalId: normalizedAssignment.externalId,
           classExternalId: normalizedClass.externalId,
           message: error instanceof Error ? error.message : String(error),
         });
@@ -250,18 +272,46 @@ async function main() {
     const uniqueSchools = dedupeBy(schools, (item) => item.externalId);
     const uniqueClasses = dedupeBy(classes, (item) => item.externalId);
     const uniqueSubjects = dedupeBy(subjects, (item) => item.externalId);
+    const uniqueTeacherAssignments = dedupeBy(
+      teacherAssignments,
+      (item) => item.externalId
+    );
     const uniqueStudents = dedupeBy(students, (item) => item.externalId);
-    const uniqueEnrollments = dedupeBy(
-      enrollments,
-      (item) => item.externalId || `${item.studentExternalId}:${item.classExternalId}`
+    const uniqueClassEnrollments = dedupeBy(
+      classEnrollments,
+      (item) => item.externalId
+    );
+    const uniqueAssignmentStudents = dedupeBy(
+      assignmentStudents,
+      (item) => item.externalId
     );
 
     logSection("Deduplicação");
     logItem("Escolas removidas", schools.length - uniqueSchools.length);
     logItem("Turmas removidas", classes.length - uniqueClasses.length);
     logItem("Disciplinas removidas", subjects.length - uniqueSubjects.length);
+    logItem(
+      "Atribuições removidas",
+      teacherAssignments.length - uniqueTeacherAssignments.length
+    );
     logItem("Alunos removidos", students.length - uniqueStudents.length);
-    logItem("Vínculos removidos", enrollments.length - uniqueEnrollments.length);
+    logItem(
+      "Vínculos aluno + turma removidos",
+      classEnrollments.length - uniqueClassEnrollments.length
+    );
+    logItem(
+      "Vínculos aluno + atribuição removidos",
+      assignmentStudents.length - uniqueAssignmentStudents.length
+    );
+
+    const inconsistencies = findReferenceInconsistencies({
+      classes: uniqueClasses,
+      subjects: uniqueSubjects,
+      teacherAssignments: uniqueTeacherAssignments,
+      students: uniqueStudents,
+      classEnrollments: uniqueClassEnrollments,
+      assignmentStudents: uniqueAssignmentStudents,
+    });
 
     const normalizedPreview = {
       metadata: {
@@ -274,8 +324,10 @@ async function main() {
       schools: uniqueSchools,
       classes: uniqueClasses,
       subjects: uniqueSubjects,
+      teacherAssignments: uniqueTeacherAssignments,
       students: uniqueStudents,
-      enrollments: uniqueEnrollments,
+      classEnrollments: uniqueClassEnrollments,
+      assignmentStudents: uniqueAssignmentStudents,
       diagnostics: {
         fieldsFound: collectFieldPresence({
           professionalPayload,
@@ -288,6 +340,19 @@ async function main() {
           studentRows: uniqueStudents,
         }).missing,
         classErrors,
+        duplicateRemovals: {
+          schools: schools.length - uniqueSchools.length,
+          classes: classes.length - uniqueClasses.length,
+          subjects: subjects.length - uniqueSubjects.length,
+          teacherAssignments:
+            teacherAssignments.length - uniqueTeacherAssignments.length,
+          students: students.length - uniqueStudents.length,
+          classEnrollments:
+            classEnrollments.length - uniqueClassEnrollments.length,
+          assignmentStudents:
+            assignmentStudents.length - uniqueAssignmentStudents.length,
+        },
+        inconsistencies,
       },
     };
 
@@ -295,9 +360,14 @@ async function main() {
 
     logSection("Resumo");
     logItem("Preview normalizado", previewFile);
-    logItem("Turmas processadas", uniqueClasses.length);
+    logItem("Turmas escolares únicas", uniqueClasses.length);
+    logItem("Atribuições turma + disciplina", uniqueTeacherAssignments.length);
+    logItem("Disciplinas únicas", uniqueSubjects.length);
     logItem("Alunos processados", uniqueStudents.length);
+    logItem("Vínculos aluno + turma", uniqueClassEnrollments.length);
+    logItem("Vínculos aluno + atribuição", uniqueAssignmentStudents.length);
     logItem("Erros por turma", classErrors.length);
+    logItem("Inconsistências encontradas", inconsistencies.length);
   } finally {
     await browser.close();
   }
@@ -615,9 +685,7 @@ function normalizeSchoolRecord(classRow, schoolExternalId) {
 }
 
 function normalizeClassRow({ classRow, schoolExternalId, academicYearId }) {
-  const classExternalId =
-    classRow.id ??
-    `${classRow.formacaoTurmaId ?? "turma"}:${classRow.componenteCurricularLocalId ?? "componente"}`;
+  const classExternalId = classRow.formacaoTurmaId ?? classRow.id ?? null;
 
   return {
     externalId: classExternalId,
@@ -625,26 +693,16 @@ function normalizeClassRow({ classRow, schoolExternalId, academicYearId }) {
     grade: classRow.temporalidade ?? parseGrade(classRow.turma ?? classRow.nomeTurma ?? ""),
     letter: parseLetter(classRow.turma ?? classRow.nomeTurma ?? ""),
     shift: classRow.turno ?? null,
+    room: classRow.sala ?? null,
     schoolExternalId: schoolExternalId ?? null,
     academicYearExternalId: academicYearId ?? null,
-    subjectExternalId:
-      classRow.componenteCurricularLocalId ??
-      classRow.componenteCurricularId ??
-      null,
-    curriculumSubjectExternalId:
-      classRow.curriculoMatrizItinerarioComponenteCurricularId ??
-      classRow.curriculoMatrizCurricularBnccComponenteCurricularId ??
-      null,
+    course: cleanString(classRow.curso),
+    stage: classRow.etapa ?? classRow.anoEtapaTurma ?? null,
     studentCount: null,
     rawMetadata: sanitizeJsonPayload({
+      originalAssignmentExternalId: classRow.id ?? null,
       formacaoTurmaId: classRow.formacaoTurmaId ?? null,
-      formacaoTurmaMatrizCurricularId:
-        classRow.formacaoTurmaMatrizCurricularId ?? null,
-      componenteCurricular: classRow.componenteCurricular ?? null,
-      tipoComponente: classRow.tipoComponente ?? null,
-      sala: classRow.sala ?? null,
-      etapa: classRow.etapa ?? null,
-      curso: classRow.curso ?? null,
+      nomeTurma: classRow.nomeTurma ?? null,
       semestre: classRow.semestre ?? null,
       ehSemestral: classRow.ehSemestral ?? null,
     }),
@@ -663,21 +721,49 @@ function normalizeSubjectRow(classRow) {
       classRow.curriculoMatrizItinerarioComponenteCurricularId ??
       classRow.curriculoMatrizCurricularBnccComponenteCurricularId ??
       null,
+    workload: classRow.cargaHoraria ?? null,
+    componentType: classRow.tipoComponente ?? null,
     rawMetadata: sanitizeJsonPayload({
-      tipoComponente: classRow.tipoComponente ?? null,
-      cargaHoraria: classRow.cargaHoraria ?? null,
       cargaHorariaStr: classRow.cargaHorariaStr ?? null,
       itinerario: classRow.itinerario ?? null,
     }),
   };
 }
 
+function normalizeTeacherAssignmentRow({
+  classRow,
+  classExternalId,
+  subjectExternalId,
+  professionalEnrollmentId,
+}) {
+  return {
+    externalId: classRow.id ?? buildStableKey(["assignment", classExternalId, subjectExternalId]),
+    classExternalId,
+    subjectExternalId,
+    curriculumSubjectExternalId:
+      classRow.curriculoMatrizItinerarioComponenteCurricularId ??
+      classRow.curriculoMatrizCurricularBnccComponenteCurricularId ??
+      null,
+    professionalEnrollmentExternalId: professionalEnrollmentId,
+    semester: classRow.semestre ?? null,
+    multipleAllocation: null,
+    source: "siage",
+    rawMetadata: sanitizeJsonPayload({
+      formacaoTurmaId: classRow.formacaoTurmaId ?? null,
+      componenteCurricular: classRow.componenteCurricular ?? null,
+      turma: classRow.turma ?? null,
+      sala: classRow.sala ?? null,
+      cargaHoraria: classRow.cargaHoraria ?? null,
+    }),
+  };
+}
+
 function normalizeStudentRow(studentRow) {
   const externalId =
-    studentRow.id ??
-    studentRow.formacaoTurmaAlunoId ??
     studentRow.estudanteMatricula ??
     studentRow.matricula ??
+    studentRow.id ??
+    studentRow.formacaoTurmaAlunoId ??
     `student-${slugify(studentRow.nome ?? "unknown")}`;
 
   return {
@@ -697,20 +783,49 @@ function normalizeStudentRow(studentRow) {
   };
 }
 
-function normalizeEnrollmentRow({ studentRow, classExternalId }) {
+function normalizeClassEnrollmentRow({ studentRow, classExternalId }) {
   const studentExternalId =
-    studentRow.id ??
-    studentRow.formacaoTurmaAlunoId ??
     studentRow.estudanteMatricula ??
     studentRow.matricula ??
+    studentRow.id ??
+    studentRow.formacaoTurmaAlunoId ??
     `student-${slugify(studentRow.nome ?? "unknown")}`;
 
   return {
-    externalId: studentRow.formacaoTurmaAlunoId ?? null,
+    externalId: buildStableKey(["class-enrollment", studentExternalId, classExternalId]),
     studentExternalId,
     classExternalId,
     status: resolveStudentStatus(studentRow),
     source: "siage",
+    formacaoTurmaAlunoExternalId: studentRow.formacaoTurmaAlunoId ?? null,
+    rawMetadata: sanitizeJsonPayload({
+      formacaoTurmaAlunoId: studentRow.formacaoTurmaAlunoId ?? null,
+    }),
+  };
+}
+
+function normalizeAssignmentStudentRow({
+  studentRow,
+  teacherAssignmentExternalId,
+}) {
+  const studentExternalId =
+    studentRow.estudanteMatricula ??
+    studentRow.matricula ??
+    studentRow.id ??
+    studentRow.formacaoTurmaAlunoId ??
+    `student-${slugify(studentRow.nome ?? "unknown")}`;
+
+  return {
+    externalId: buildStableKey([
+      "assignment-student",
+      studentExternalId,
+      teacherAssignmentExternalId,
+    ]),
+    studentExternalId,
+    teacherAssignmentExternalId,
+    status: resolveStudentStatus(studentRow),
+    source: "siage",
+    formacaoTurmaAlunoExternalId: studentRow.formacaoTurmaAlunoId ?? null,
   };
 }
 
@@ -752,6 +867,65 @@ function dedupeBy(items, keyBuilder) {
     seen.add(key);
     return true;
   });
+}
+
+function buildStableKey(parts) {
+  return parts.map((part) => String(part ?? "")).join(":");
+}
+
+function findReferenceInconsistencies({
+  classes,
+  subjects,
+  teacherAssignments,
+  students,
+  classEnrollments,
+  assignmentStudents,
+}) {
+  const classIds = new Set(classes.map((item) => item.externalId));
+  const subjectIds = new Set(subjects.map((item) => item.externalId));
+  const assignmentIds = new Set(teacherAssignments.map((item) => item.externalId));
+  const studentIds = new Set(students.map((item) => item.externalId));
+  const inconsistencies = [];
+
+  for (const assignment of teacherAssignments) {
+    if (!classIds.has(assignment.classExternalId)) {
+      inconsistencies.push(`assignment-with-missing-class:${assignment.externalId}`);
+    }
+
+    if (!subjectIds.has(assignment.subjectExternalId)) {
+      inconsistencies.push(`assignment-with-missing-subject:${assignment.externalId}`);
+    }
+  }
+
+  for (const enrollment of classEnrollments) {
+    if (!classIds.has(enrollment.classExternalId)) {
+      inconsistencies.push(`class-enrollment-with-missing-class:${enrollment.externalId}`);
+    }
+
+    if (!studentIds.has(enrollment.studentExternalId)) {
+      inconsistencies.push(`class-enrollment-with-missing-student:${enrollment.externalId}`);
+    }
+  }
+
+  for (const assignmentStudent of assignmentStudents) {
+    if (!assignmentIds.has(assignmentStudent.teacherAssignmentExternalId)) {
+      inconsistencies.push(
+        `assignment-student-with-missing-assignment:${assignmentStudent.externalId}`
+      );
+    }
+
+    if (!studentIds.has(assignmentStudent.studentExternalId)) {
+      inconsistencies.push(
+        `assignment-student-with-missing-student:${assignmentStudent.externalId}`
+      );
+    }
+  }
+
+  return inconsistencies;
+}
+
+function cleanString(value) {
+  return typeof value === "string" ? value.trim() : value ?? null;
 }
 
 async function saveRawPayload(label, payload) {

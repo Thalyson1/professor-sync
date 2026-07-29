@@ -67,7 +67,7 @@ Objetivos:
 - descobrir dinamicamente, sempre que possível, os IDs necessários;
 - buscar dados profissionais, matrículas, turmas, componentes e alunos;
 - tratar paginação;
-- gerar saídas brutas sanitizadas e um preview normalizado.
+- gerar saídas brutas sanitizadas e um preview normalizado separado em turmas escolares, disciplinas, atribuições e vínculos.
 
 Comando:
 
@@ -94,6 +94,15 @@ Fluxo:
    - opcionalmente `/api/DiarioClasseFrequencia/get-cabecario-listagem`
 4. Salva respostas brutas sanitizadas e gera um preview normalizado.
 
+Modelagem atual do preview:
+
+- `classes`: uma entrada por `formacaoTurmaId`, representando a turma escolar real.
+- `subjects`: uma entrada por componente curricular.
+- `teacherAssignments`: uma entrada por combinação professor + turma + disciplina.
+- `students`: uma entrada única por estudante.
+- `classEnrollments`: uma entrada por aluno + turma escolar.
+- `assignmentStudents`: uma entrada por aluno + atribuição do professor.
+
 Arquivos gerados:
 
 - `scripts/siage-poc/output/raw/`
@@ -115,8 +124,11 @@ O preview normalizado segue esta base:
   "schools": [],
   "classes": [],
   "subjects": [],
+  "teacherAssignments": [],
   "students": [],
-  "enrollments": []
+  "classEnrollments": [],
+  "assignmentStudents": [],
+  "diagnostics": {}
 }
 ```
 
@@ -133,4 +145,5 @@ O preview normalizado segue esta base:
 - A descoberta de IDs depende dos endpoints observados na sessão autenticada atual.
 - A paginação é tratada com base nos metadados retornados pela API, quando disponíveis.
 - A classificação e a normalização ainda são heurísticas e podem precisar de ajuste após novas inspeções.
+- Alguns campos textuais vindos do SIAGE podem refletir a codificação original retornada pela API e podem exigir limpeza posterior.
 - O POC não escreve frequência, notas, avaliações ou registros de aula.
