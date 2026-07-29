@@ -1,12 +1,11 @@
-import { turmasMock } from "../data/turmas";
-import type { IndicadorTurma, SecaoTurma, Turma } from "../types";
-
-export type TurmasFiltros = {
-  busca: string;
-  turno: string;
-  modalidade: string;
-  semestre: string;
-};
+import { turmaOverviewMock } from "../data/turma-overview";
+import type {
+  IndicadorTurma,
+  ResumoTurma,
+  SecaoTurma,
+  Turma,
+  TurmasFiltros
+} from "../types";
 
 export const turmaSections: Array<{ id: SecaoTurma; label: string }> = [
   { id: "visao-geral", label: "Visão geral" },
@@ -17,45 +16,55 @@ export const turmaSections: Array<{ id: SecaoTurma; label: string }> = [
   { id: "avaliacoes", label: "Avaliações" }
 ];
 
-export function getTurmas() {
-  return turmasMock;
-}
+export const TURMA_SHIFT_OPTIONS = [
+  { value: "integral", label: "Integral" },
+  { value: "night", label: "Noite" }
+] as const;
 
-export function getTurmaById(turmaId: string) {
-  return turmasMock.find((turma) => turma.id === turmaId);
-}
+export const TURMA_MODALITY_OPTIONS = [
+  { value: "integral", label: "Integral" },
+  { value: "eja", label: "EJA" }
+] as const;
 
-export function getTurmasFilterOptions() {
-  return {
-    turnos: Array.from(new Set(turmasMock.map((turma) => turma.turno))),
-    modalidades: Array.from(new Set(turmasMock.map((turma) => turma.modalidade))),
-    semestres: Array.from(new Set(turmasMock.map((turma) => turma.semestre))).sort(
-      (left, right) => right.localeCompare(left)
-    )
-  };
-}
+export const TURMA_STATUS_OPTIONS = [
+  { value: "active", label: "Ativa" },
+  { value: "inactive", label: "Inativa" }
+] as const;
+
+export const SUBJECT_STATUS_OPTIONS = [
+  { value: "active", label: "Ativa" },
+  { value: "inactive", label: "Inativa" }
+] as const;
 
 export function filterTurmas(turmas: Turma[], filtros: TurmasFiltros) {
   const termoBusca = filtros.busca.trim().toLocaleLowerCase("pt-BR");
 
   return turmas.filter((turma) => {
+    const searchableValues = [
+      turma.nome,
+      turma.serie,
+      turma.curso,
+      turma.escola.nome,
+      formatTurno(turma.turno),
+      formatModalidade(turma.modalidade),
+      formatSemesterLabel(turma.semestre),
+      ...turma.disciplinas.map((disciplina) => disciplina.nome)
+    ];
+
     const correspondeBusca =
       termoBusca.length === 0 ||
-      [
-        turma.nome,
-        turma.serie,
-        turma.curso,
-        turma.disciplina.nome,
-        turma.modalidade,
-        turma.semestre
-      ].some((valor) => valor.toLocaleLowerCase("pt-BR").includes(termoBusca));
+      searchableValues.some((valor) =>
+        valor.toLocaleLowerCase("pt-BR").includes(termoBusca)
+      );
 
     const correspondeTurno =
       filtros.turno.length === 0 || turma.turno === filtros.turno;
     const correspondeModalidade =
       filtros.modalidade.length === 0 || turma.modalidade === filtros.modalidade;
     const correspondeSemestre =
-      filtros.semestre.length === 0 || turma.semestre === filtros.semestre;
+      filtros.semestre.length === 0 ||
+      turma.semestre.id === filtros.semestre ||
+      formatSemesterLabel(turma.semestre) === filtros.semestre;
 
     return (
       correspondeBusca &&
@@ -64,6 +73,21 @@ export function filterTurmas(turmas: Turma[], filtros: TurmasFiltros) {
       correspondeSemestre
     );
   });
+}
+
+export function getTurmasFilterOptions(turmas: Turma[]) {
+  return {
+    turnos: Array.from(new Set(turmas.map((turma) => turma.turno))),
+    modalidades: Array.from(new Set(turmas.map((turma) => turma.modalidade))),
+    semestres: Array.from(
+      new Map(
+        turmas.map((turma) => [turma.semestre.id, turma.semestre])
+      ).values()
+    ).sort(
+      (left, right) =>
+        right.ano - left.ano || right.semestre - left.semestre
+    )
+  };
 }
 
 export function getTurmaIndicators(turma: Turma): IndicadorTurma[] {
@@ -125,4 +149,39 @@ export function getTurmaSection(section?: string): SecaoTurma {
   return turmaSections.some((item) => item.id === sectionId)
     ? (sectionId as SecaoTurma)
     : "visao-geral";
+}
+
+export function formatTurno(turno: string) {
+  return turno === "night" ? "Noite" : "Integral";
+}
+
+export function formatModalidade(modalidade: string) {
+  return modalidade === "eja" ? "EJA" : "Integral";
+}
+
+export function formatStatus(status: string) {
+  return status === "inactive" ? "Inativa" : "Ativa";
+}
+
+export function formatSemesterLabel(semestre: {
+  ano: number;
+  semestre: number;
+}) {
+  return `${semestre.ano}.${semestre.semestre}`;
+}
+
+export function getTurmaResumo(turmaId: string): ResumoTurma {
+  return (
+    turmaOverviewMock[turmaId] ?? {
+      proximaAula: "Sem aulas planejadas",
+      conteudoPrevisto: "Sem conteúdo planejado no momento.",
+      aulasRealizadas: 0,
+      aulasPlanejadas: 0,
+      cargaHorariaCumprida: 0,
+      frequenciasPendentes: 0,
+      registrosPendentes: 0,
+      avaliacoesCadastradas: 0,
+      proximasAulas: []
+    }
+  );
 }

@@ -9,7 +9,11 @@ type TurmasFiltersProps = {
   semestreAtual: string;
   turnos: string[];
   modalidades: string[];
-  semestres: string[];
+  semestres: Array<{
+    id: string;
+    ano: number;
+    semestre: number;
+  }>;
 };
 
 function FilterSelect({
@@ -57,7 +61,10 @@ export function TurmasFilters({
         defaultValue={turnoAtual}
         options={[
           { label: "Todos os turnos", value: "" },
-          ...turnos.map((turno) => ({ label: turno, value: turno }))
+          ...turnos.map((turno) => ({
+            label: turno === "night" ? "Noite" : "Integral",
+            value: turno
+          }))
         ]}
       />
       <FilterSelect
@@ -67,7 +74,7 @@ export function TurmasFilters({
         options={[
           { label: "Todas as modalidades", value: "" },
           ...modalidades.map((modalidade) => ({
-            label: modalidade,
+            label: modalidade === "eja" ? "EJA" : "Integral",
             value: modalidade
           }))
         ]}
@@ -78,7 +85,10 @@ export function TurmasFilters({
         defaultValue={semestreAtual}
         options={[
           { label: "Todos os semestres", value: "" },
-          ...semestres.map((semestre) => ({ label: semestre, value: semestre }))
+          ...semestres.map((semestre) => ({
+            label: `${semestre.ano}.${semestre.semestre}`,
+            value: semestre.id
+          }))
         ]}
       />
     </div>

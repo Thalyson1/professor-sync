@@ -1,6 +1,12 @@
 import Link from "next/link";
 
 import type { Turma } from "../types";
+import {
+  formatModalidade,
+  formatSemesterLabel,
+  formatStatus,
+  formatTurno
+} from "../utils/turmas";
 
 type TurmaCardProps = {
   turma: Turma;
@@ -25,22 +31,24 @@ export function TurmaCard({ turma }: TurmaCardProps) {
           </div>
           <span
             className={`rounded-full px-3 py-1 text-xs font-semibold ${
-              turma.status === "Ativa"
+              turma.status === "active"
                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/12 dark:text-emerald-300"
                 : "bg-slate-200 text-slate-700 dark:bg-slate-700/60 dark:text-slate-200"
             }`}
           >
-            {turma.status}
+            {formatStatus(turma.status)}
           </span>
         </div>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           <div>
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--muted-soft)]">
-              Disciplina
+              Disciplinas
             </p>
             <p className="mt-1 text-sm leading-6 text-[var(--foreground)]">
-              {turma.disciplina.nome}
+              {turma.disciplinas.length > 0
+                ? turma.disciplinas.map((disciplina) => disciplina.nome).join(", ")
+                : "Sem disciplinas cadastradas"}
             </p>
           </div>
           <div>
@@ -48,7 +56,7 @@ export function TurmaCard({ turma }: TurmaCardProps) {
               Turno
             </p>
             <p className="mt-1 text-sm leading-6 text-[var(--foreground)]">
-              {turma.turno}
+              {formatTurno(turma.turno)}
             </p>
           </div>
           <div>
@@ -56,7 +64,7 @@ export function TurmaCard({ turma }: TurmaCardProps) {
               Modalidade
             </p>
             <p className="mt-1 text-sm leading-6 text-[var(--foreground)]">
-              {turma.modalidade}
+              {formatModalidade(turma.modalidade)}
             </p>
           </div>
           <div>
@@ -72,7 +80,7 @@ export function TurmaCard({ turma }: TurmaCardProps) {
               Semestre
             </p>
             <p className="mt-1 text-sm leading-6 text-[var(--foreground)]">
-              {turma.semestre}
+              {formatSemesterLabel(turma.semestre)}
             </p>
           </div>
           <div>

@@ -1,6 +1,12 @@
 import Link from "next/link";
 
 import type { Turma } from "../types";
+import {
+  formatModalidade,
+  formatSemesterLabel,
+  formatStatus,
+  formatTurno
+} from "../utils/turmas";
 
 type TurmaHeaderProps = {
   turma: Turma;
@@ -26,27 +32,38 @@ export function TurmaHeader({ turma }: TurmaHeaderProps) {
             {turma.nome}
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--muted)]">
-            {turma.curso} · {turma.disciplina.nome}
+            {turma.curso} ·{" "}
+            {turma.disciplinas.length > 0
+              ? turma.disciplinas.map((disciplina) => disciplina.nome).join(", ")
+              : "Sem disciplinas cadastradas"}
           </p>
         </div>
 
         <span
           className={`self-start rounded-full px-3 py-1 text-xs font-semibold ${
-            turma.status === "Ativa"
+            turma.status === "active"
               ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/12 dark:text-emerald-300"
               : "bg-slate-200 text-slate-700 dark:bg-slate-700/60 dark:text-slate-200"
           }`}
         >
-          {turma.status}
+          {formatStatus(turma.status)}
         </span>
       </div>
 
       <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <InfoPill label="Escola" value={turma.escola.nome} />
         <InfoPill label="Curso" value={turma.curso} />
-        <InfoPill label="Disciplina" value={turma.disciplina.nome} />
-        <InfoPill label="Turno" value={turma.turno} />
-        <InfoPill label="Modalidade" value={turma.modalidade} />
-        <InfoPill label="Semestre" value={turma.semestre} />
+        <InfoPill
+          label="Disciplinas"
+          value={
+            turma.disciplinas.length > 0
+              ? turma.disciplinas.map((disciplina) => disciplina.nome).join(", ")
+              : "Sem disciplinas cadastradas"
+          }
+        />
+        <InfoPill label="Turno" value={formatTurno(turma.turno)} />
+        <InfoPill label="Modalidade" value={formatModalidade(turma.modalidade)} />
+        <InfoPill label="Semestre" value={formatSemesterLabel(turma.semestre)} />
         <InfoPill
           label="Quantidade de alunos"
           value={`${turma.quantidadeAlunos} estudantes`}

@@ -1,15 +1,16 @@
 import Link from "next/link";
 
 import { PageSection } from "@/components/ui/page-section";
+import { AddTurmaForm } from "@/features/turmas/components/add-turma-form";
 import { TurmaCard } from "@/features/turmas/components/turma-card";
+import { TurmasDataState } from "@/features/turmas/components/turmas-data-state";
 import { TurmasEmptyState } from "@/features/turmas/components/turmas-empty-state";
 import { TurmasFilters } from "@/features/turmas/components/turmas-filters";
 import { TurmasSearch } from "@/features/turmas/components/turmas-search";
-import {
-  filterTurmas,
-  getTurmas,
-  getTurmasFilterOptions
-} from "@/features/turmas/utils/turmas";
+import { getTurmasData } from "@/features/turmas/data/queries";
+import { getTurmasFilterOptions } from "@/features/turmas/utils/turmas";
+
+export const dynamic = "force-dynamic";
 
 type TurmasPageProps = {
   searchParams: Promise<{
@@ -29,15 +30,15 @@ export default async function TurmasPage({ searchParams }: TurmasPageProps) {
     semestre: resolvedSearchParams.semestre ?? ""
   };
 
-  const turmas = getTurmas();
-  const filterOptions = getTurmasFilterOptions();
-  const turmasFiltradas = filterTurmas(turmas, filtros);
+  const { data, error, configured } = await getTurmasData(filtros);
+  const filterOptions = getTurmasFilterOptions(data.todasAsTurmas);
+  const turmasFiltradas = data.turmas;
   const hasFilters = Object.values(filtros).some((value) => value.length > 0);
 
   return (
     <PageSection
       title="Minhas turmas"
-      description="Consulte suas turmas simuladas, filtre por contexto letivo e acesse o diário de cada turma para acompanhar os próximos módulos do produto."
+      description="Consulte suas turmas reais de desenvolvimento, filtre por contexto letivo e acesse o diário de cada turma para acompanhar os próximos módulos do produto."
     >
       <section className="rounded-3xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -46,17 +47,12 @@ export default async function TurmasPage({ searchParams }: TurmasPageProps) {
               Turmas cadastradas
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--muted)]">
-              Dados simulados da Rede Estadual da Paraíba para representar a
-              estrutura inicial do módulo de turmas.
+              Dados persistidos no Supabase para desenvolvimento do módulo de
+              turmas.
             </p>
           </div>
 
-          <button
-            type="button"
-            className="inline-flex items-center justify-center rounded-2xl border border-[var(--primary)] bg-[var(--primary)] px-4 py-3 text-sm font-medium text-white transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)]"
-          >
-            Adicionar turma
-          </button>
+          <AddTurmaForm escolas={data.escolas} semestres={data.semestres} />
         </div>
 
         <form method="get" className="mt-6 space-y-4">
@@ -86,7 +82,16 @@ export default async function TurmasPage({ searchParams }: TurmasPageProps) {
         </form>
       </section>
 
-      {turmasFiltradas.length > 0 ? (
+      {error ? (
+        <TurmasDataState
+          title={
+            configured
+              ? "Não foi possível carregar as turmas"
+              : "Supabase ainda não configurado"
+          }
+          description={error}
+        />
+      ) : turmasFiltradas.length > 0 ? (
         <div className="grid gap-5 xl:grid-cols-2">
           {turmasFiltradas.map((turma) => (
             <TurmaCard key={turma.id} turma={turma} />

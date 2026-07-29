@@ -1,8 +1,12 @@
-export type ModalidadeTurma = "Integral" | "EJA";
+export type ModalidadeTurma = "integral" | "eja";
 
-export type TurnoTurma = "Integral" | "Noite";
+export type TurnoTurma = "integral" | "night";
 
-export type StatusTurma = "Ativa" | "Inativa";
+export type StatusTurma = "active" | "inactive";
+
+export type StatusSemestre = "planned" | "active" | "completed";
+
+export type StatusDisciplina = "active" | "inactive";
 
 export type SecaoTurma =
   | "visao-geral"
@@ -12,10 +16,28 @@ export type SecaoTurma =
   | "frequencia"
   | "avaliacoes";
 
+export type Escola = {
+  id: string;
+  nome: string;
+  cidade: string;
+  estado: string;
+};
+
+export type Semestre = {
+  id: string;
+  ano: number;
+  semestre: 1 | 2;
+  dataInicio: string;
+  dataFim: string;
+  status: StatusSemestre;
+};
+
 export type Disciplina = {
   id: string;
   nome: string;
   cargaHorariaTotal: number;
+  aulasSemanais: number;
+  status: StatusDisciplina;
 };
 
 export type Aula = {
@@ -51,11 +73,44 @@ export type Turma = {
   nome: string;
   serie: string;
   curso: string;
-  disciplina: Disciplina;
   turno: TurnoTurma;
   modalidade: ModalidadeTurma;
   quantidadeAlunos: number;
-  semestre: string;
   status: StatusTurma;
+  escola: Escola;
+  semestre: Semestre;
+  disciplinas: Disciplina[];
   resumo: ResumoTurma;
+};
+
+export type TurmasFiltros = {
+  busca: string;
+  turno: string;
+  modalidade: string;
+  semestre: string;
+};
+
+export type TurmaFormValues = {
+  nome: string;
+  serie: string;
+  curso: string;
+  turno: TurnoTurma;
+  modalidade: ModalidadeTurma;
+  quantidadeAlunos: number;
+  escolaId: string;
+  semestreId: string;
+  status: StatusTurma;
+};
+
+export type DisciplinaFormValues = {
+  turmaId: string;
+  nome: string;
+  cargaHorariaTotal: number;
+  aulasSemanais: number;
+  status: StatusDisciplina;
+};
+
+export type FormActionState = {
+  status: "idle" | "success" | "error";
+  message: string;
 };
