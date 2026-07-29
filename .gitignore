@@ -28,3 +28,9 @@ pnpm-debug.log*
 
 # vercel
 .vercel
+
+# siage poc artifacts
+/scripts/siage-poc/output/
+/scripts/siage-poc/session/
+/scripts/siage-poc/*.html
+/scripts/siage-poc/*.json

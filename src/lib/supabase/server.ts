@@ -1,11 +1,23 @@
 import { createServerClient } from "@supabase/ssr";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
 import type { Database } from "@/types/database";
 
-import { requireSupabasePublicEnv } from "./env";
+import { getSupabaseServerEnv, requireSupabasePublicEnv } from "./env";
 
 export async function createClient() {
+  const serverEnv = getSupabaseServerEnv();
+
+  if (serverEnv) {
+    return createSupabaseClient<Database>(serverEnv.url, serverEnv.secretKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false
+      }
+    });
+  }
+
   const cookieStore = await cookies();
   const { url, anonKey } = requireSupabasePublicEnv();
 

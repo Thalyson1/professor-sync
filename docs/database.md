@@ -42,16 +42,18 @@ The repository includes a `supabase/seed.sql` file with development-only data:
 Current policies are for development only.
 
 - No authentication is implemented yet
-- No service role key is used by the app
 - Tables are temporarily accessible with the public anon key
-- Row Level Security is disabled for the current tables to allow development flows without login
+- Row Level Security should remain enabled with permissive development policies during this phase
+- While the remote project policies are being aligned, the current server-only integration may temporarily use `SUPABASE_SECRET_KEY` in backend code only
+- The secret key must never be exposed to browser code, client components, or public environment variables
 
 This is intentionally temporary and must change before production.
 
 ## What should change when authentication is added
 
 - Enable Row Level Security on all application tables
-- Replace broad anon access with explicit `select`, `insert`, `update` policies
+- Replace broad development policies with explicit `select`, `insert`, `update` policies scoped by authenticated users
+- Remove the temporary server-only secret-key fallback once proper policies and authentication are in place
 - Link classes and subjects to a real teacher or membership model
 - Restrict create and update operations by authenticated user context
 - Review whether semester and school data should remain shared or become scoped by institution

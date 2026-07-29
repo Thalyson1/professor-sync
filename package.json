@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "siage:poc": "node scripts/siage-poc/run.mjs",
+    "siage:poc:install": "playwright install chromium"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
@@ -22,6 +24,7 @@
     "@types/react-dom": "^19.2.2",
     "eslint": "^9.34.0",
     "eslint-config-next": "16.2.11",
+    "playwright": "^1.62.0",
     "tailwindcss": "^4.1.12",
     "typescript": "^5.9.2"
   }
