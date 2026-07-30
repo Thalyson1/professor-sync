@@ -1,22 +1,24 @@
 import Link from "next/link";
 
 import { EmptyState } from "@/components/ui/empty-state";
+import { PageSection } from "@/components/ui/page-section";
 
-export default function TurmaNotFoundPage() {
+export default function TurmaNotFound() {
   return (
-    <div className="space-y-6">
+    <PageSection
+      title="Turma não encontrada"
+      description="A turma solicitada não existe no banco atual ou ainda não foi sincronizada."
+    >
+      <EmptyState
+        title="Não encontramos esta turma"
+        description="Volte para a listagem para escolher uma turma válida importada do SIAGE."
+      />
       <Link
         href="/turmas"
-        className="inline-flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--card-strong)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--primary)] hover:text-[var(--primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)]"
+        className="inline-flex items-center justify-center rounded-2xl border border-[var(--primary)] bg-[var(--primary)] px-4 py-3 text-sm font-medium text-white transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)]"
       >
-        <span aria-hidden="true">←</span>
-        <span>Voltar para turmas</span>
+        Voltar para turmas
       </Link>
-
-      <EmptyState
-        title="Turma não encontrada"
-        description="O identificador informado não corresponde a nenhuma turma simulada disponível no momento."
-      />
-    </div>
+    </PageSection>
   );
 }

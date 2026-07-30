@@ -1,21 +1,45 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { createClient } from "@/lib/supabase/server";
+import { createRlsClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
 
-import { getTurmaResumo } from "../utils/turmas";
-import type { Escola, Semestre, Turma, TurmasFiltros } from "../types";
+import { buildTurmaResumo, filterTurmas } from "../utils/turmas";
+import type { Aluno, Disciplina, Escola, PeriodoLetivo, Turma, TurmasFiltros } from "../types";
 
 type SchoolRow = Database["public"]["Tables"]["schools"]["Row"];
-type SemesterRow = Database["public"]["Tables"]["semesters"]["Row"];
+type AcademicPeriodRow = Database["public"]["Tables"]["academic_periods"]["Row"];
 type ClassRow = Database["public"]["Tables"]["classes"]["Row"];
 type SubjectRow = Database["public"]["Tables"]["subjects"]["Row"];
+type TeacherAssignmentRow = Database["public"]["Tables"]["teacher_assignments"]["Row"];
+type ClassEnrollmentRow = Database["public"]["Tables"]["class_enrollments"]["Row"];
+type StudentRow = Database["public"]["Tables"]["students"]["Row"];
+
+type AssignmentWithSubject = Pick<
+  TeacherAssignmentRow,
+  | "id"
+  | "external_id"
+  | "semester"
+  | "multiple_allocation"
+  | "curriculum_subject_external_id"
+  | "source"
+  | "raw_metadata"
+> & {
+  subjects: SubjectRow | null;
+};
+
+type EnrollmentWithStudent = Pick<
+  ClassEnrollmentRow,
+  "id" | "external_id" | "status" | "raw_metadata"
+> & {
+  students?: StudentRow | null;
+};
 
 type ClassWithRelations = ClassRow & {
   schools: SchoolRow | null;
-  semesters: SemesterRow | null;
-  subjects: SubjectRow[] | null;
+  academic_periods: AcademicPeriodRow | null;
+  teacher_assignments: AssignmentWithSubject[] | null;
+  class_enrollments: EnrollmentWithStudent[] | null;
 };
 
 type QueryState<T> = {
@@ -24,19 +48,106 @@ type QueryState<T> = {
   configured: boolean;
 };
 
+const classSelect = `
+  id,
+  external_id,
+  school_id,
+  academic_period_id,
+  name,
+  grade,
+  letter,
+  course,
+  shift,
+  room,
+  stage,
+  student_count,
+  status,
+  source,
+  raw_metadata,
+  created_at,
+  updated_at,
+  last_synced_at,
+  schools:schools!classes_school_id_fkey(
+    id,
+    external_id,
+    name,
+    city,
+    state,
+    source,
+    raw_metadata,
+    created_at,
+    updated_at,
+    last_synced_at
+  ),
+  academic_periods:academic_periods!classes_academic_period_id_fkey(
+    id,
+    external_id,
+    year,
+    name,
+    is_active,
+    source,
+    created_at,
+    updated_at,
+    last_synced_at
+  ),
+  teacher_assignments(
+    id,
+    external_id,
+    semester,
+    multiple_allocation,
+    curriculum_subject_external_id,
+    source,
+    raw_metadata,
+    subjects:subjects!teacher_assignments_subject_id_fkey(
+      id,
+      class_id,
+      external_id,
+      curriculum_subject_external_id,
+      name,
+      workload_hours,
+      weekly_lessons,
+      workload,
+      component_type,
+      status,
+      source,
+      raw_metadata,
+      created_at,
+      updated_at,
+      last_synced_at
+    )
+  ),
+  class_enrollments(
+    id,
+    external_id,
+    status,
+    raw_metadata,
+    students:students!class_enrollments_student_id_fkey(
+      id,
+      external_id,
+      name,
+      enrollment_number,
+      status,
+      source,
+      raw_metadata,
+      created_at,
+      updated_at,
+      last_synced_at
+    )
+  )
+`;
+
 export async function getTurmasData(
   filtros: TurmasFiltros
 ): Promise<
   QueryState<{
     turmas: Turma[];
     todasAsTurmas: Turma[];
-    escolas: Escola[];
-    semestres: Semestre[];
+    periodos: PeriodoLetivo[];
   }>
 > {
   if (!isSupabaseConfigured()) {
     return {
-      data: { turmas: [], todasAsTurmas: [], escolas: [], semestres: [] },
+      data: { turmas: [], todasAsTurmas: [], periodos: [] },
       error:
         "Supabase ainda não está configurado. Defina as variáveis públicas do projeto para carregar dados reais.",
       configured: false
@@ -44,56 +155,42 @@ export async function getTurmasData(
   }
 
   try {
-    const supabase = await createClient();
+    const supabase = await createRlsClient();
+    const { data, error } = await supabase
+      .from("classes")
+      .select(classSelect)
+      .order("name", { ascending: true });
 
-    const [classesResult, schoolsResult, semestersResult] = await Promise.all([
-      supabase
-        .from("classes")
-        .select(
-          "id, school_id, semester_id, name, grade, course, shift, modality, student_count, status, created_at, updated_at, schools(*), semesters(*), subjects(*)"
-        )
-        .order("name", { ascending: true }),
-      supabase.from("schools").select("*").order("name", { ascending: true }),
-      supabase
-        .from("semesters")
-        .select("*")
-        .order("year", { ascending: false })
-        .order("semester", { ascending: false })
-    ]);
-
-    const classesError = classesResult.error;
-    const schoolsError = schoolsResult.error;
-    const semestersError = semestersResult.error;
-
-    if (classesError || schoolsError || semestersError) {
+    if (error) {
       return {
-        data: { turmas: [], todasAsTurmas: [], escolas: [], semestres: [] },
+        data: { turmas: [], todasAsTurmas: [], periodos: [] },
         error:
-          getReadableError(classesError ?? schoolsError ?? semestersError) ??
+          getReadableError(error) ??
           "Não foi possível carregar os dados de turmas no momento.",
         configured: true
       };
     }
 
-    const turmas = ((classesResult.data ?? []) as ClassWithRelations[]).map(
-      mapClassToTurma
+    const turmas = ((data ?? []) as ClassWithRelations[]).map((row) =>
+      mapClassToTurma(row)
     );
-    const escolas = (schoolsResult.data ?? []).map(mapSchool);
-    const semestres = (semestersResult.data ?? []).map(mapSemester);
+
+    const periodos = Array.from(
+      new Map(turmas.map((turma) => [turma.periodoLetivo.id, turma.periodoLetivo])).values()
+    ).sort((left, right) => (right.ano ?? 0) - (left.ano ?? 0));
 
     return {
       data: {
-        turmas: applyTurmasFilters(turmas, filtros),
+        turmas: filterTurmas(turmas, filtros),
         todasAsTurmas: turmas,
-        escolas,
-        semestres
+        periodos
       },
       error: null,
       configured: true
     };
   } catch (error) {
     return {
-      data: { turmas: [], todasAsTurmas: [], escolas: [], semestres: [] },
+      data: { turmas: [], todasAsTurmas: [], periodos: [] },
       error:
         error instanceof Error
           ? error.message
@@ -116,12 +213,10 @@ export async function getTurmaDetail(
   }
 
   try {
-    const supabase = await createClient();
+    const supabase = await createRlsClient();
     const { data, error } = await supabase
       .from("classes")
-      .select(
-        "id, school_id, semester_id, name, grade, course, shift, modality, student_count, status, created_at, updated_at, schools(*), semesters(*), subjects(*)"
-      )
+      .select(classSelect)
       .eq("id", turmaId)
       .maybeSingle();
 
@@ -150,80 +245,113 @@ export async function getTurmaDetail(
   }
 }
 
-function applyTurmasFilters(turmas: Turma[], filtros: TurmasFiltros) {
-  const termoBusca = filtros.busca.trim().toLocaleLowerCase("pt-BR");
-
-  return turmas.filter((turma) => {
-    const correspondeBusca =
-      termoBusca.length === 0 ||
-      [
-        turma.nome,
-        turma.serie,
-        turma.curso,
-        turma.escola.nome,
-        `${turma.semestre.ano}.${turma.semestre.semestre}`,
-        ...turma.disciplinas.map((disciplina) => disciplina.nome)
-      ].some((value) =>
-        value.toLocaleLowerCase("pt-BR").includes(termoBusca)
-      );
-
-    const correspondeTurno =
-      filtros.turno.length === 0 || turma.turno === filtros.turno;
-    const correspondeModalidade =
-      filtros.modalidade.length === 0 || turma.modalidade === filtros.modalidade;
-    const correspondeSemestre =
-      filtros.semestre.length === 0 || turma.semestre.id === filtros.semestre;
-
-    return (
-      correspondeBusca &&
-      correspondeTurno &&
-      correspondeModalidade &&
-      correspondeSemestre
-    );
-  });
-}
-
 function mapClassToTurma(row: ClassWithRelations): Turma {
+  const disciplinas = mapSubjects(row.teacher_assignments);
+  const alunos = mapStudents(row.class_enrollments);
+  const quantidadeAlunos =
+    alunos.length || row.class_enrollments?.length || row.student_count || 0;
+
   return {
     id: row.id,
+    externalId: row.external_id,
     nome: row.name,
     serie: row.grade,
+    letra: row.letter,
     curso: row.course,
     turno: row.shift,
-    modalidade: row.modality,
-    quantidadeAlunos: row.student_count,
+    sala: row.room,
+    etapa: row.stage,
+    quantidadeAlunos,
     status: row.status,
     escola: mapSchool(row.schools),
-    semestre: mapSemester(row.semesters),
-    disciplinas: (row.subjects ?? []).map((subject) => ({
-      id: subject.id,
-      nome: subject.name,
-      cargaHorariaTotal: subject.workload_hours,
-      aulasSemanais: subject.weekly_lessons,
-      status: subject.status
-    })),
-    resumo: getTurmaResumo(row.id)
+    periodoLetivo: mapAcademicPeriod(row.academic_periods),
+    disciplinas,
+    alunos,
+    resumo: buildTurmaResumo({
+      nome: row.name,
+      quantidadeAlunos,
+      disciplinas
+    })
   };
 }
 
 function mapSchool(row: SchoolRow | null | undefined): Escola {
   return {
     id: row?.id ?? "",
+    externalId: row?.external_id ?? null,
     nome: row?.name ?? "Escola não informada",
-    cidade: row?.city ?? "-",
-    estado: row?.state ?? "-"
+    cidade: row?.city ?? null,
+    estado: row?.state ?? null
   };
 }
 
-function mapSemester(row: SemesterRow | null | undefined): Semestre {
+function mapAcademicPeriod(
+  row: AcademicPeriodRow | null | undefined
+): PeriodoLetivo {
   return {
     id: row?.id ?? "",
-    ano: row?.year ?? new Date().getFullYear(),
-    semestre: row?.semester ?? 1,
-    dataInicio: row?.start_date ?? "",
-    dataFim: row?.end_date ?? "",
-    status: row?.status ?? "planned"
+    externalId: row?.external_id ?? null,
+    ano: row?.year ?? null,
+    nome:
+      row?.name ??
+      (row?.year ? `Período letivo ${row.year}` : "Período letivo não informado"),
+    ativo: row?.is_active ?? false
   };
+}
+
+function mapSubjects(rows: AssignmentWithSubject[] | null): Disciplina[] {
+  const subjectMap = new Map<string, Disciplina>();
+
+  for (const assignment of rows ?? []) {
+    if (!assignment.subjects) {
+      continue;
+    }
+
+    const subject = assignment.subjects;
+
+    if (!subjectMap.has(subject.id)) {
+      subjectMap.set(subject.id, {
+        id: subject.id,
+        externalId: subject.external_id,
+        curriculumSubjectExternalId: subject.curriculum_subject_external_id,
+        nome: subject.name,
+        cargaHorariaTotal: subject.workload ?? subject.workload_hours,
+        aulasSemanais: subject.weekly_lessons,
+        tipoComponente: subject.component_type,
+        status: subject.status
+      });
+    }
+  }
+
+  return Array.from(subjectMap.values()).sort((left, right) =>
+    left.nome.localeCompare(right.nome, "pt-BR")
+  );
+}
+
+function mapStudents(rows: EnrollmentWithStudent[] | null): Aluno[] {
+  const studentMap = new Map<string, Aluno>();
+
+  for (const enrollment of rows ?? []) {
+    if (!enrollment.students) {
+      continue;
+    }
+
+    const student = enrollment.students;
+
+    if (!studentMap.has(student.id)) {
+      studentMap.set(student.id, {
+        id: student.id,
+        externalId: student.external_id,
+        nome: student.name,
+        matricula: student.enrollment_number,
+        status: student.status
+      });
+    }
+  }
+
+  return Array.from(studentMap.values()).sort((left, right) =>
+    left.nome.localeCompare(right.nome, "pt-BR")
+  );
 }
 
 function getReadableError(error: PostgrestError | null) {

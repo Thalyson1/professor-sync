@@ -6,18 +6,7 @@ import type { Database } from "@/types/database";
 
 import { getSupabaseServerEnv, requireSupabasePublicEnv } from "./env";
 
-export async function createClient() {
-  const serverEnv = getSupabaseServerEnv();
-
-  if (serverEnv) {
-    return createSupabaseClient<Database>(serverEnv.url, serverEnv.secretKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false
-      }
-    });
-  }
-
+async function createCookieClient() {
   const cookieStore = await cookies();
   const { url, anonKey } = requireSupabasePublicEnv();
 
@@ -37,4 +26,23 @@ export async function createClient() {
       }
     }
   });
+}
+
+export async function createRlsClient() {
+  return createCookieClient();
+}
+
+export async function createClient() {
+  const serverEnv = getSupabaseServerEnv();
+
+  if (serverEnv) {
+    return createSupabaseClient<Database>(serverEnv.url, serverEnv.secretKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false
+      }
+    });
+  }
+
+  return createCookieClient();
 }

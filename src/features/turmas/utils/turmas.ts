@@ -1,4 +1,3 @@
-import { turmaOverviewMock } from "../data/turma-overview";
 import type {
   IndicadorTurma,
   ResumoTurma,
@@ -43,11 +42,12 @@ export function filterTurmas(turmas: Turma[], filtros: TurmasFiltros) {
     const searchableValues = [
       turma.nome,
       turma.serie,
+      turma.letra ?? "",
       turma.curso,
       turma.escola.nome,
+      turma.sala ?? "",
       formatTurno(turma.turno),
-      formatModalidade(turma.modalidade),
-      formatSemesterLabel(turma.semestre),
+      formatAcademicPeriodLabel(turma.periodoLetivo),
       ...turma.disciplinas.map((disciplina) => disciplina.nome)
     ];
 
@@ -59,34 +59,23 @@ export function filterTurmas(turmas: Turma[], filtros: TurmasFiltros) {
 
     const correspondeTurno =
       filtros.turno.length === 0 || turma.turno === filtros.turno;
-    const correspondeModalidade =
-      filtros.modalidade.length === 0 || turma.modalidade === filtros.modalidade;
-    const correspondeSemestre =
-      filtros.semestre.length === 0 ||
-      turma.semestre.id === filtros.semestre ||
-      formatSemesterLabel(turma.semestre) === filtros.semestre;
+    const correspondePeriodo =
+      filtros.periodo.length === 0 ||
+      turma.periodoLetivo.id === filtros.periodo ||
+      formatAcademicPeriodLabel(turma.periodoLetivo) === filtros.periodo;
 
-    return (
-      correspondeBusca &&
-      correspondeTurno &&
-      correspondeModalidade &&
-      correspondeSemestre
-    );
+    return correspondeBusca && correspondeTurno && correspondePeriodo;
   });
 }
 
 export function getTurmasFilterOptions(turmas: Turma[]) {
   return {
     turnos: Array.from(new Set(turmas.map((turma) => turma.turno))),
-    modalidades: Array.from(new Set(turmas.map((turma) => turma.modalidade))),
-    semestres: Array.from(
+    periodos: Array.from(
       new Map(
-        turmas.map((turma) => [turma.semestre.id, turma.semestre])
+        turmas.map((turma) => [turma.periodoLetivo.id, turma.periodoLetivo])
       ).values()
-    ).sort(
-      (left, right) =>
-        right.ano - left.ano || right.semestre - left.semestre
-    )
+    ).sort((left, right) => (right.ano ?? 0) - (left.ano ?? 0))
   };
 }
 
@@ -96,7 +85,7 @@ export function getTurmaIndicators(turma: Turma): IndicadorTurma[] {
       id: "proxima-aula",
       label: "Próxima aula",
       valor: turma.resumo.proximaAula,
-      apoio: "Data simulada da próxima aula prevista para a turma."
+      apoio: "Indicador provisório enquanto o cronograma real ainda não foi implementado."
     },
     {
       id: "conteudo-previsto",
@@ -108,25 +97,25 @@ export function getTurmaIndicators(turma: Turma): IndicadorTurma[] {
       id: "aulas-realizadas",
       label: "Aulas realizadas",
       valor: String(turma.resumo.aulasRealizadas),
-      apoio: "Quantidade já registrada neste semestre."
+      apoio: "Quantidade simulada para a visão inicial do diário."
     },
     {
       id: "aulas-planejadas",
       label: "Aulas planejadas",
       valor: String(turma.resumo.aulasPlanejadas),
-      apoio: "Total previsto no planejamento atual."
+      apoio: "Total previsto no planejamento provisório."
     },
     {
       id: "carga-cumprida",
       label: "Carga horária cumprida",
       valor: `${turma.resumo.cargaHorariaCumprida}h`,
-      apoio: "Carga simulada já cumprida até aqui."
+      apoio: "Carga provisória derivada das disciplinas importadas."
     },
     {
       id: "frequencias-pendentes",
       label: "Frequências pendentes",
       valor: String(turma.resumo.frequenciasPendentes),
-      apoio: "Pendências de presença ainda não tratadas."
+      apoio: "Contagem simulada até o módulo de frequência existir."
     },
     {
       id: "registros-pendentes",
@@ -138,7 +127,7 @@ export function getTurmaIndicators(turma: Turma): IndicadorTurma[] {
       id: "avaliacoes-cadastradas",
       label: "Avaliações cadastradas",
       valor: String(turma.resumo.avaliacoesCadastradas),
-      apoio: "Quantidade simulada de avaliações disponíveis."
+      apoio: "Total provisório ligado às disciplinas da turma."
     }
   ];
 }
@@ -152,7 +141,19 @@ export function getTurmaSection(section?: string): SecaoTurma {
 }
 
 export function formatTurno(turno: string) {
-  return turno === "night" ? "Noite" : "Integral";
+  if (turno === "night") {
+    return "Noite";
+  }
+
+  if (turno === "morning") {
+    return "Manhã";
+  }
+
+  if (turno === "afternoon") {
+    return "Tarde";
+  }
+
+  return turno === "integral" ? "Integral" : turno;
 }
 
 export function formatModalidade(modalidade: string) {
@@ -170,18 +171,82 @@ export function formatSemesterLabel(semestre: {
   return `${semestre.ano}.${semestre.semestre}`;
 }
 
-export function getTurmaResumo(turmaId: string): ResumoTurma {
-  return (
-    turmaOverviewMock[turmaId] ?? {
-      proximaAula: "Sem aulas planejadas",
-      conteudoPrevisto: "Sem conteúdo planejado no momento.",
-      aulasRealizadas: 0,
-      aulasPlanejadas: 0,
-      cargaHorariaCumprida: 0,
-      frequenciasPendentes: 0,
-      registrosPendentes: 0,
-      avaliacoesCadastradas: 0,
-      proximasAulas: []
-    }
+export function formatAcademicPeriodLabel(periodo: {
+  nome: string;
+  ano: number | null;
+}) {
+  if (periodo.nome && periodo.ano) {
+    return `${periodo.nome} · ${periodo.ano}`;
+  }
+
+  if (periodo.nome) {
+    return periodo.nome;
+  }
+
+  if (periodo.ano) {
+    return String(periodo.ano);
+  }
+
+  return "Período letivo não informado";
+}
+
+export function getTurmaDisplayName(
+  turma: Pick<Turma, "nome" | "serie" | "letra">
+) {
+  const prefixoSerie = [turma.serie, turma.letra].filter(Boolean).join(" ");
+
+  return prefixoSerie && !turma.nome.includes(prefixoSerie)
+    ? `${prefixoSerie} - ${turma.nome}`
+    : turma.nome;
+}
+
+export function buildTurmaResumo(turma: {
+  nome: string;
+  quantidadeAlunos: number;
+  disciplinas: Array<{ nome: string; cargaHorariaTotal: number | null }>;
+}): ResumoTurma {
+  const primeiraDisciplina = turma.disciplinas[0]?.nome ?? "Conteúdo pendente";
+  const segundaDisciplina = turma.disciplinas[1]?.nome ?? primeiraDisciplina;
+  const aulasPlanejadas = Math.max(turma.disciplinas.length * 6, 6);
+  const aulasRealizadas = Math.max(
+    Math.min(aulasPlanejadas - 2, turma.quantidadeAlunos > 0 ? 4 : 0),
+    0
   );
+  const cargaHorariaCumprida = turma.disciplinas.reduce(
+    (total, disciplina) =>
+      total + Math.min(disciplina.cargaHorariaTotal ?? 0, 20),
+    0
+  );
+
+  return {
+    proximaAula:
+      turma.quantidadeAlunos > 0 ? "Próxima aula agendada" : "Sem aulas planejadas",
+    conteudoPrevisto: primeiraDisciplina,
+    aulasRealizadas,
+    aulasPlanejadas,
+    cargaHorariaCumprida,
+    frequenciasPendentes: turma.quantidadeAlunos > 0 ? 1 : 0,
+    registrosPendentes: turma.quantidadeAlunos > 0 ? 2 : 0,
+    avaliacoesCadastradas: turma.disciplinas.length,
+    proximasAulas: turma.quantidadeAlunos
+      ? [
+          {
+            id: `${turma.nome}-aula-1`,
+            data: "2026-08-03",
+            titulo: primeiraDisciplina,
+            conteudo: `Planejamento introdutório para ${primeiraDisciplina}.`,
+            status: "planejada",
+            cargaHoraria: 2
+          },
+          {
+            id: `${turma.nome}-aula-2`,
+            data: "2026-08-10",
+            titulo: segundaDisciplina,
+            conteudo: `Sequência prevista da disciplina ${segundaDisciplina}.`,
+            status: "planejada",
+            cargaHoraria: 2
+          }
+        ]
+      : []
+  };
 }

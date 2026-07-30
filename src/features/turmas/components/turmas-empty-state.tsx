@@ -14,8 +14,8 @@ export function TurmasEmptyState({ hasFilters }: TurmasEmptyStateProps) {
       }
       description={
         hasFilters
-          ? "Ajuste a busca ou os filtros de turno, modalidade e semestre para encontrar outras turmas cadastradas."
-          : "Ainda não existem turmas cadastradas no banco para esta visualização."
+          ? "Ajuste a busca ou os filtros de turno e período letivo para encontrar outras turmas."
+          : "Assim que as turmas forem sincronizadas no Supabase, elas aparecerão aqui para consulta."
       }
     />
   );

@@ -6,33 +6,52 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
+type Relationship = {
+  foreignKeyName: string;
+  columns: string[];
+  referencedRelation: string;
+  referencedColumns: string[];
+};
+
 export type Database = {
   public: {
     Tables: {
       schools: {
         Row: {
           id: string;
+          external_id: string | null;
           name: string;
-          city: string;
-          state: string;
+          city: string | null;
+          state: string | null;
+          source: string;
+          raw_metadata: Json;
           created_at: string;
           updated_at: string;
+          last_synced_at: string | null;
         };
         Insert: {
           id?: string;
+          external_id?: string | null;
           name: string;
-          city: string;
-          state?: string;
+          city?: string | null;
+          state?: string | null;
+          source?: string;
+          raw_metadata?: Json;
           created_at?: string;
           updated_at?: string;
+          last_synced_at?: string | null;
         };
         Update: {
           id?: string;
+          external_id?: string | null;
           name?: string;
-          city?: string;
-          state?: string;
+          city?: string | null;
+          state?: string | null;
+          source?: string;
+          raw_metadata?: Json;
           created_at?: string;
           updated_at?: string;
+          last_synced_at?: string | null;
         };
         Relationships: [];
       };
@@ -69,103 +88,488 @@ export type Database = {
         };
         Relationships: [];
       };
-      classes: {
+      academic_periods: {
         Row: {
           id: string;
-          school_id: string;
-          semester_id: string;
-          name: string;
-          grade: string;
-          course: string;
-          shift: "integral" | "night";
-          modality: "integral" | "eja";
-          student_count: number;
-          status: "active" | "inactive";
+          external_id: string | null;
+          year: number | null;
+          name: string | null;
+          is_active: boolean;
+          source: string;
           created_at: string;
           updated_at: string;
+          last_synced_at: string | null;
         };
         Insert: {
           id?: string;
-          school_id: string;
-          semester_id: string;
-          name: string;
-          grade: string;
-          course: string;
-          shift: "integral" | "night";
-          modality: "integral" | "eja";
-          student_count?: number;
-          status?: "active" | "inactive";
+          external_id?: string | null;
+          year?: number | null;
+          name?: string | null;
+          is_active?: boolean;
+          source?: string;
           created_at?: string;
           updated_at?: string;
+          last_synced_at?: string | null;
         };
         Update: {
           id?: string;
-          school_id?: string;
-          semester_id?: string;
-          name?: string;
-          grade?: string;
-          course?: string;
-          shift?: "integral" | "night";
-          modality?: "integral" | "eja";
-          student_count?: number;
-          status?: "active" | "inactive";
+          external_id?: string | null;
+          year?: number | null;
+          name?: string | null;
+          is_active?: boolean;
+          source?: string;
           created_at?: string;
           updated_at?: string;
+          last_synced_at?: string | null;
         };
-        Relationships: [
-          {
-            foreignKeyName: "classes_school_id_fkey";
-            columns: ["school_id"];
-            referencedRelation: "schools";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "classes_semester_id_fkey";
-            columns: ["semester_id"];
-            referencedRelation: "semesters";
-            referencedColumns: ["id"];
-          }
-        ];
+        Relationships: [];
+      };
+      professionals: {
+        Row: {
+          id: string;
+          external_id: string | null;
+          name: string;
+          email: string | null;
+          role: string | null;
+          status: string | null;
+          source: string;
+          raw_metadata: Json;
+          created_at: string;
+          updated_at: string;
+          last_synced_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          external_id?: string | null;
+          name: string;
+          email?: string | null;
+          role?: string | null;
+          status?: string | null;
+          source?: string;
+          raw_metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+          last_synced_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          external_id?: string | null;
+          name?: string;
+          email?: string | null;
+          role?: string | null;
+          status?: string | null;
+          source?: string;
+          raw_metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+          last_synced_at?: string | null;
+        };
+        Relationships: [];
+      };
+      professional_enrollments: {
+        Row: {
+          id: string;
+          external_id: string | null;
+          professional_id: string;
+          school_id: string | null;
+          status: string | null;
+          source: string;
+          raw_metadata: Json;
+          created_at: string;
+          updated_at: string;
+          last_synced_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          external_id?: string | null;
+          professional_id: string;
+          school_id?: string | null;
+          status?: string | null;
+          source?: string;
+          raw_metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+          last_synced_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          external_id?: string | null;
+          professional_id?: string;
+          school_id?: string | null;
+          status?: string | null;
+          source?: string;
+          raw_metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+          last_synced_at?: string | null;
+        };
+        Relationships: Relationship[];
+      };
+      classes: {
+        Row: {
+          id: string;
+          external_id: string | null;
+          school_id: string;
+          semester_id: string | null;
+          academic_period_id: string | null;
+          name: string;
+          grade: string;
+          letter: string | null;
+          course: string;
+          shift: string;
+          modality: "integral" | "eja" | null;
+          room: string | null;
+          stage: string | null;
+          student_count: number;
+          status: string;
+          source: string;
+          raw_metadata: Json;
+          created_at: string;
+          updated_at: string;
+          last_synced_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          external_id?: string | null;
+          school_id: string;
+          semester_id?: string | null;
+          academic_period_id?: string | null;
+          name: string;
+          grade: string;
+          letter?: string | null;
+          course: string;
+          shift: string;
+          modality?: "integral" | "eja" | null;
+          room?: string | null;
+          stage?: string | null;
+          student_count?: number;
+          status?: string;
+          source?: string;
+          raw_metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+          last_synced_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          external_id?: string | null;
+          school_id?: string;
+          semester_id?: string | null;
+          academic_period_id?: string | null;
+          name?: string;
+          grade?: string;
+          letter?: string | null;
+          course?: string;
+          shift?: string;
+          modality?: "integral" | "eja" | null;
+          room?: string | null;
+          stage?: string | null;
+          student_count?: number;
+          status?: string;
+          source?: string;
+          raw_metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+          last_synced_at?: string | null;
+        };
+        Relationships: Relationship[];
       };
       subjects: {
         Row: {
           id: string;
-          class_id: string;
+          class_id: string | null;
+          external_id: string | null;
+          curriculum_subject_external_id: string | null;
           name: string;
-          workload_hours: number;
-          weekly_lessons: number;
-          status: "active" | "inactive";
+          workload_hours: number | null;
+          weekly_lessons: number | null;
+          workload: number | null;
+          component_type: string | null;
+          status: string;
+          source: string;
+          raw_metadata: Json;
           created_at: string;
           updated_at: string;
+          last_synced_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          class_id?: string | null;
+          external_id?: string | null;
+          curriculum_subject_external_id?: string | null;
+          name: string;
+          workload_hours?: number | null;
+          weekly_lessons?: number | null;
+          workload?: number | null;
+          component_type?: string | null;
+          status?: string;
+          source?: string;
+          raw_metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+          last_synced_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          class_id?: string | null;
+          external_id?: string | null;
+          curriculum_subject_external_id?: string | null;
+          name?: string;
+          workload_hours?: number | null;
+          weekly_lessons?: number | null;
+          workload?: number | null;
+          component_type?: string | null;
+          status?: string;
+          source?: string;
+          raw_metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+          last_synced_at?: string | null;
+        };
+        Relationships: Relationship[];
+      };
+      teacher_assignments: {
+        Row: {
+          id: string;
+          external_id: string | null;
+          class_id: string;
+          subject_id: string;
+          professional_enrollment_id: string;
+          curriculum_subject_external_id: string | null;
+          semester: string | null;
+          multiple_allocation: boolean | null;
+          source: string;
+          raw_metadata: Json;
+          created_at: string;
+          updated_at: string;
+          last_synced_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          external_id?: string | null;
+          class_id: string;
+          subject_id: string;
+          professional_enrollment_id: string;
+          curriculum_subject_external_id?: string | null;
+          semester?: string | null;
+          multiple_allocation?: boolean | null;
+          source?: string;
+          raw_metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+          last_synced_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          external_id?: string | null;
+          class_id?: string;
+          subject_id?: string;
+          professional_enrollment_id?: string;
+          curriculum_subject_external_id?: string | null;
+          semester?: string | null;
+          multiple_allocation?: boolean | null;
+          source?: string;
+          raw_metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+          last_synced_at?: string | null;
+        };
+        Relationships: Relationship[];
+      };
+      students: {
+        Row: {
+          id: string;
+          external_id: string | null;
+          name: string;
+          enrollment_number: string | null;
+          status: string | null;
+          source: string;
+          raw_metadata: Json;
+          created_at: string;
+          updated_at: string;
+          last_synced_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          external_id?: string | null;
+          name: string;
+          enrollment_number?: string | null;
+          status?: string | null;
+          source?: string;
+          raw_metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+          last_synced_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          external_id?: string | null;
+          name?: string;
+          enrollment_number?: string | null;
+          status?: string | null;
+          source?: string;
+          raw_metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+          last_synced_at?: string | null;
+        };
+        Relationships: [];
+      };
+      class_enrollments: {
+        Row: {
+          id: string;
+          class_id: string;
+          student_id: string;
+          external_id: string | null;
+          status: string | null;
+          source: string;
+          raw_metadata: Json;
+          created_at: string;
+          updated_at: string;
+          last_synced_at: string | null;
         };
         Insert: {
           id?: string;
           class_id: string;
-          name: string;
-          workload_hours: number;
-          weekly_lessons: number;
-          status?: "active" | "inactive";
+          student_id: string;
+          external_id?: string | null;
+          status?: string | null;
+          source?: string;
+          raw_metadata?: Json;
           created_at?: string;
           updated_at?: string;
+          last_synced_at?: string | null;
         };
         Update: {
           id?: string;
           class_id?: string;
-          name?: string;
-          workload_hours?: number;
-          weekly_lessons?: number;
-          status?: "active" | "inactive";
+          student_id?: string;
+          external_id?: string | null;
+          status?: string | null;
+          source?: string;
+          raw_metadata?: Json;
           created_at?: string;
           updated_at?: string;
+          last_synced_at?: string | null;
         };
-        Relationships: [
-          {
-            foreignKeyName: "subjects_class_id_fkey";
-            columns: ["class_id"];
-            referencedRelation: "classes";
-            referencedColumns: ["id"];
-          }
-        ];
+        Relationships: Relationship[];
+      };
+      assignment_students: {
+        Row: {
+          id: string;
+          teacher_assignment_id: string;
+          student_id: string;
+          external_id: string | null;
+          source: string;
+          raw_metadata: Json;
+          created_at: string;
+          updated_at: string;
+          last_synced_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          teacher_assignment_id: string;
+          student_id: string;
+          external_id?: string | null;
+          source?: string;
+          raw_metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+          last_synced_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          teacher_assignment_id?: string;
+          student_id?: string;
+          external_id?: string | null;
+          source?: string;
+          raw_metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+          last_synced_at?: string | null;
+        };
+        Relationships: Relationship[];
+      };
+      sync_runs: {
+        Row: {
+          id: string;
+          source: string;
+          status: string;
+          started_at: string;
+          finished_at: string | null;
+          classes_count: number;
+          subjects_count: number;
+          students_count: number;
+          assignments_count: number;
+          class_enrollments_count: number;
+          assignment_students_count: number;
+          error_count: number;
+          metadata: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          source?: string;
+          status: string;
+          started_at?: string;
+          finished_at?: string | null;
+          classes_count?: number;
+          subjects_count?: number;
+          students_count?: number;
+          assignments_count?: number;
+          class_enrollments_count?: number;
+          assignment_students_count?: number;
+          error_count?: number;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          source?: string;
+          status?: string;
+          started_at?: string;
+          finished_at?: string | null;
+          classes_count?: number;
+          subjects_count?: number;
+          students_count?: number;
+          assignments_count?: number;
+          class_enrollments_count?: number;
+          assignment_students_count?: number;
+          error_count?: number;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      sync_errors: {
+        Row: {
+          id: string;
+          sync_run_id: string;
+          entity_type: string;
+          external_id: string | null;
+          message: string;
+          details: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          sync_run_id: string;
+          entity_type: string;
+          external_id?: string | null;
+          message: string;
+          details?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          sync_run_id?: string;
+          entity_type?: string;
+          external_id?: string | null;
+          message?: string;
+          details?: Json;
+          created_at?: string;
+        };
+        Relationships: Relationship[];
       };
     };
     Views: Record<string, never>;

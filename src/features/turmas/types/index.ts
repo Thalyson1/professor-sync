@@ -1,8 +1,8 @@
 export type ModalidadeTurma = "integral" | "eja";
 
-export type TurnoTurma = "integral" | "night";
+export type TurnoTurma = "integral" | "morning" | "afternoon" | "night" | string;
 
-export type StatusTurma = "active" | "inactive";
+export type StatusTurma = "active" | "inactive" | string;
 
 export type StatusSemestre = "planned" | "active" | "completed";
 
@@ -18,9 +18,10 @@ export type SecaoTurma =
 
 export type Escola = {
   id: string;
+  externalId: string | null;
   nome: string;
-  cidade: string;
-  estado: string;
+  cidade: string | null;
+  estado: string | null;
 };
 
 export type Semestre = {
@@ -32,12 +33,31 @@ export type Semestre = {
   status: StatusSemestre;
 };
 
+export type PeriodoLetivo = {
+  id: string;
+  externalId: string | null;
+  ano: number | null;
+  nome: string;
+  ativo: boolean;
+};
+
 export type Disciplina = {
   id: string;
+  externalId: string | null;
+  curriculumSubjectExternalId: string | null;
   nome: string;
-  cargaHorariaTotal: number;
-  aulasSemanais: number;
-  status: StatusDisciplina;
+  cargaHorariaTotal: number | null;
+  aulasSemanais: number | null;
+  tipoComponente: string | null;
+  status: StatusDisciplina | string;
+};
+
+export type Aluno = {
+  id: string;
+  externalId: string | null;
+  nome: string;
+  matricula: string | null;
+  status: string | null;
 };
 
 export type Aula = {
@@ -70,24 +90,27 @@ export type ResumoTurma = {
 
 export type Turma = {
   id: string;
+  externalId: string | null;
   nome: string;
   serie: string;
+  letra: string | null;
   curso: string;
   turno: TurnoTurma;
-  modalidade: ModalidadeTurma;
+  sala: string | null;
+  etapa: string | null;
   quantidadeAlunos: number;
   status: StatusTurma;
   escola: Escola;
-  semestre: Semestre;
+  periodoLetivo: PeriodoLetivo;
   disciplinas: Disciplina[];
+  alunos: Aluno[];
   resumo: ResumoTurma;
 };
 
 export type TurmasFiltros = {
   busca: string;
   turno: string;
-  modalidade: string;
-  semestre: string;
+  periodo: string;
 };
 
 export type TurmaFormValues = {

@@ -5,14 +5,12 @@ type SelectOption = {
 
 type TurmasFiltersProps = {
   turnoAtual: string;
-  modalidadeAtual: string;
-  semestreAtual: string;
+  periodoAtual: string;
   turnos: string[];
-  modalidades: string[];
-  semestres: Array<{
+  periodos: Array<{
     id: string;
-    ano: number;
-    semestre: number;
+    ano: number | null;
+    nome: string;
   }>;
 };
 
@@ -47,14 +45,12 @@ function FilterSelect({
 
 export function TurmasFilters({
   turnoAtual,
-  modalidadeAtual,
-  semestreAtual,
+  periodoAtual,
   turnos,
-  modalidades,
-  semestres
+  periodos
 }: TurmasFiltersProps) {
   return (
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="grid gap-4 md:grid-cols-2">
       <FilterSelect
         label="Turno"
         name="turno"
@@ -62,32 +58,23 @@ export function TurmasFilters({
         options={[
           { label: "Todos os turnos", value: "" },
           ...turnos.map((turno) => ({
-            label: turno === "night" ? "Noite" : "Integral",
+            label: turno === "night" ? "Noite" : turno === "integral" ? "Integral" : turno,
             value: turno
           }))
         ]}
       />
       <FilterSelect
-        label="Modalidade"
-        name="modalidade"
-        defaultValue={modalidadeAtual}
+        label="Período letivo"
+        name="periodo"
+        defaultValue={periodoAtual}
         options={[
-          { label: "Todas as modalidades", value: "" },
-          ...modalidades.map((modalidade) => ({
-            label: modalidade === "eja" ? "EJA" : "Integral",
-            value: modalidade
-          }))
-        ]}
-      />
-      <FilterSelect
-        label="Semestre"
-        name="semestre"
-        defaultValue={semestreAtual}
-        options={[
-          { label: "Todos os semestres", value: "" },
-          ...semestres.map((semestre) => ({
-            label: `${semestre.ano}.${semestre.semestre}`,
-            value: semestre.id
+          { label: "Todos os períodos", value: "" },
+          ...periodos.map((periodo) => ({
+            label:
+              periodo.nome && periodo.ano
+                ? `${periodo.nome} · ${periodo.ano}`
+                : periodo.nome || String(periodo.ano ?? ""),
+            value: periodo.id
           }))
         ]}
       />

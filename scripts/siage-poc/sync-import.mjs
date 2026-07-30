@@ -162,10 +162,12 @@ async function main() {
         grade: item.grade,
         letter: item.letter,
         shift: normalizeLegacyShift(item.shift),
+        modality: inferLegacyModality(item.shift),
         room: item.room,
         course: item.course,
         stage: item.stage,
         student_count: item.studentCount,
+        status: "active",
         source: item.source,
         raw_metadata: item.rawMetadata,
         last_synced_at: item.lastSyncedAt,
@@ -183,7 +185,10 @@ async function main() {
         curriculum_subject_external_id: item.curriculumSubjectExternalId,
         name: item.name,
         workload: item.workload,
+        workload_hours: item.workload,
+        weekly_lessons: inferWeeklyLessons(item.workload),
         component_type: item.componentType,
+        status: "active",
         source: item.source,
         raw_metadata: item.rawMetadata,
         last_synced_at: item.lastSyncedAt,
@@ -482,6 +487,7 @@ function buildImportPayload(preview) {
       room: item.room ?? null,
       course: item.course ?? null,
       stage: item.stage ?? null,
+      semester: item.rawMetadata?.semestre ?? null,
       studentCount: item.studentCount ?? 0,
       source,
       rawMetadata: sanitizeJsonPayload(item.rawMetadata ?? {}),
@@ -658,12 +664,19 @@ function printCounts(payload) {
 }
 
 function requireImportEnv() {
-  const url = process.env.SUPABASE_URL ?? "";
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  const url =
+    process.env.SUPABASE_URL ??
+    process.env.NEXT_PUBLIC_SUPABASE_URL ??
+    "";
+
+  const serviceRoleKey =
+    process.env.SUPABASE_SECRET_KEY ??
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    "";
 
   if (!url || !serviceRoleKey) {
     throw new Error(
-      "Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY antes de executar a importação."
+      "Defina SUPABASE_URL e SUPABASE_SECRET_KEY antes de executar a importação."
     );
   }
 
@@ -888,6 +901,32 @@ function normalizeLegacyShift(shift) {
   }
 
   return "integral";
+}
+
+function inferLegacyModality(shift) {
+  const normalized = String(shift ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+
+  if (normalized === "integral") {
+    return "integral";
+  }
+
+  if (normalized === "night" || normalized === "noite" || normalized === "noturno") {
+    return "eja";
+  }
+
+  return null;
+}
+
+function inferWeeklyLessons(workload) {
+  if (typeof workload === "number" && workload > 0) {
+    return workload;
+  }
+
+  return 1;
 }
 
 function chunkArray(items, size) {

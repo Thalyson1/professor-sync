@@ -1,7 +1,6 @@
 import Link from "next/link";
 
 import { PageSection } from "@/components/ui/page-section";
-import { AddTurmaForm } from "@/features/turmas/components/add-turma-form";
 import { TurmaCard } from "@/features/turmas/components/turma-card";
 import { TurmasDataState } from "@/features/turmas/components/turmas-data-state";
 import { TurmasEmptyState } from "@/features/turmas/components/turmas-empty-state";
@@ -16,8 +15,7 @@ type TurmasPageProps = {
   searchParams: Promise<{
     busca?: string;
     turno?: string;
-    modalidade?: string;
-    semestre?: string;
+    periodo?: string;
   }>;
 };
 
@@ -26,8 +24,7 @@ export default async function TurmasPage({ searchParams }: TurmasPageProps) {
   const filtros = {
     busca: resolvedSearchParams.busca ?? "",
     turno: resolvedSearchParams.turno ?? "",
-    modalidade: resolvedSearchParams.modalidade ?? "",
-    semestre: resolvedSearchParams.semestre ?? ""
+    periodo: resolvedSearchParams.periodo ?? ""
   };
 
   const { data, error, configured } = await getTurmasData(filtros);
@@ -38,32 +35,28 @@ export default async function TurmasPage({ searchParams }: TurmasPageProps) {
   return (
     <PageSection
       title="Minhas turmas"
-      description="Consulte suas turmas reais de desenvolvimento, filtre por contexto letivo e acesse o diário de cada turma para acompanhar os próximos módulos do produto."
+      description="Consulte as turmas reais importadas do SIAGE, filtre por turno e período letivo e acesse o diário de cada turma para acompanhar as próximas etapas do Professor Sync."
     >
       <section className="rounded-3xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h2 className="text-xl font-semibold text-[var(--foreground)]">
-              Turmas cadastradas
+              Turmas sincronizadas
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--muted)]">
-              Dados persistidos no Supabase para desenvolvimento do módulo de
-              turmas.
+              A listagem mostra apenas as turmas escolares únicas e reúne, em cada
+              card, as disciplinas atribuídas ao professor.
             </p>
           </div>
-
-          <AddTurmaForm escolas={data.escolas} semestres={data.semestres} />
         </div>
 
         <form method="get" className="mt-6 space-y-4">
           <TurmasSearch defaultValue={filtros.busca} />
           <TurmasFilters
             turnoAtual={filtros.turno}
-            modalidadeAtual={filtros.modalidade}
-            semestreAtual={filtros.semestre}
+            periodoAtual={filtros.periodo}
             turnos={filterOptions.turnos}
-            modalidades={filterOptions.modalidades}
-            semestres={filterOptions.semestres}
+            periodos={filterOptions.periodos}
           />
           <div className="flex flex-wrap gap-3">
             <button

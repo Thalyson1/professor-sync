@@ -2,10 +2,10 @@ import Link from "next/link";
 
 import type { Turma } from "../types";
 import {
-  formatModalidade,
-  formatSemesterLabel,
+  formatAcademicPeriodLabel,
   formatStatus,
-  formatTurno
+  formatTurno,
+  getTurmaDisplayName
 } from "../utils/turmas";
 
 type TurmaCardProps = {
@@ -24,10 +24,14 @@ export function TurmaCard({ turma }: TurmaCardProps) {
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--primary)]">
               {turma.serie}
+              {turma.letra ? ` · ${turma.letra}` : ""}
             </p>
             <h3 className="mt-2 text-xl font-semibold text-[var(--foreground)]">
-              {turma.nome} - {turma.curso}
+              {getTurmaDisplayName(turma)}
             </h3>
+            <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+              {turma.curso}
+            </p>
           </div>
           <span
             className={`rounded-full px-3 py-1 text-xs font-semibold ${
@@ -48,7 +52,7 @@ export function TurmaCard({ turma }: TurmaCardProps) {
             <p className="mt-1 text-sm leading-6 text-[var(--foreground)]">
               {turma.disciplinas.length > 0
                 ? turma.disciplinas.map((disciplina) => disciplina.nome).join(", ")
-                : "Sem disciplinas cadastradas"}
+                : "Sem disciplinas atribuídas"}
             </p>
           </div>
           <div>
@@ -61,10 +65,10 @@ export function TurmaCard({ turma }: TurmaCardProps) {
           </div>
           <div>
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--muted-soft)]">
-              Modalidade
+              Sala
             </p>
             <p className="mt-1 text-sm leading-6 text-[var(--foreground)]">
-              {formatModalidade(turma.modalidade)}
+              {turma.sala ?? "Não informada"}
             </p>
           </div>
           <div>
@@ -77,18 +81,18 @@ export function TurmaCard({ turma }: TurmaCardProps) {
           </div>
           <div>
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--muted-soft)]">
-              Semestre
+              Período letivo
             </p>
             <p className="mt-1 text-sm leading-6 text-[var(--foreground)]">
-              {formatSemesterLabel(turma.semestre)}
+              {formatAcademicPeriodLabel(turma.periodoLetivo)}
             </p>
           </div>
           <div>
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--muted-soft)]">
-              Curso
+              Escola
             </p>
             <p className="mt-1 text-sm leading-6 text-[var(--foreground)]">
-              {turma.curso}
+              {turma.escola.nome}
             </p>
           </div>
         </div>

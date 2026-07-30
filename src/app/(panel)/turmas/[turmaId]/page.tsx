@@ -59,7 +59,7 @@ export default async function TurmaDetailPage({
         }
         description={
           activeSection === "visao-geral"
-            ? "Resumo inicial da rotina da turma com indicadores simulados e próximas aulas planejadas."
+            ? "Resumo da turma com dados reais de escola, disciplinas e alunos, além de indicadores pedagógicos ainda simulados."
             : "Esta área do diário já está preparada para navegação, mas o conteúdo funcional será desenvolvido em etapas futuras."
         }
       >
