@@ -52,6 +52,24 @@ export function getPageMetadata(pathname: string) {
     };
   }
 
+  if (pathname === "/planejamento/novo") {
+    return {
+      href: pathname,
+      label: "Novo planejamento",
+      description:
+        "Crie um rascunho semestral vinculado a uma atribuição real do professor."
+    };
+  }
+
+  if (pathname.startsWith("/planejamento/")) {
+    return {
+      href: pathname,
+      label: "Editor de planejamento",
+      description:
+        "Edite informações gerais, unidades e aulas planejadas do semestre."
+    };
+  }
+
   return (
     navigationItems.find((item) => item.href === pathname) ?? {
       href: pathname,

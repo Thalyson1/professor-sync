@@ -535,3 +535,36 @@ Será o ambiente completo de trabalho do professor da Rede Estadual da Paraíba.
 Todo o planejamento, organização pedagógica, execução das aulas e registros administrativos serão realizados na plataforma, utilizando Inteligência Artificial para reduzir tarefas repetitivas e melhorar a produtividade docente.
 
 O SIAGE será apenas o sistema oficial onde as informações serão sincronizadas.
+
+---
+
+# Atualização de Escopo — Sprint de Planejamento Semestral
+
+Estado atual validado em 6 de agosto de 2026:
+
+- sincronização de leitura do SIAGE concluída;
+- dados reais persistidos no Supabase;
+- 7 turmas escolares reais;
+- 13 atribuições professor + turma + disciplina;
+- 6 disciplinas reais;
+- módulo de Turmas consumindo dados reais.
+
+Escopo implementado nesta sprint:
+
+- listagem de atribuições reais em `/planejamento`;
+- criação de planejamento semestral em rascunho vinculado a `teacher_assignments`;
+- editor de planejamento em `/planejamento/[planoId]`;
+- criação e edição de unidades;
+- criação e edição de aulas planejadas;
+- ordenação manual de unidades e aulas por posição;
+- suporte às bases `technical` e `bncc`;
+- metodologias compatíveis com o SIAGE.
+
+Fora de escopo nesta sprint:
+
+- geração por IA;
+- importação de PDF ou Word;
+- envio ao SIAGE;
+- calendário automático;
+- frequência;
+- avaliações.

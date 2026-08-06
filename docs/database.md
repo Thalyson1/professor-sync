@@ -14,8 +14,7 @@
 
 ### `semesters`
 
-- Stores the academic period for classes
-- Current fields: `id`, `year`, `semester`, `start_date`, `end_date`, `status`, `created_at`, `updated_at`
+- Legacy local semester table kept for compatibility
 
 ### `classes`
 
@@ -39,6 +38,25 @@
 ### `teacher_assignments`
 
 - Stores the teacher + class + subject assignment combinations from SIAGE
+- This is now the anchor table for the planning module
+
+### `teaching_plans`
+
+- Stores semester teaching plans linked to a real `teacher_assignment`
+- Supports `education_base` as `technical` or `bncc`
+- Supports `status` as `draft`, `active`, `completed`, or `archived`
+- Enforces only one active plan per assignment and semester
+
+### `plan_units`
+
+- Stores ordered teaching units inside a `teaching_plan`
+
+### `planned_lessons`
+
+- Stores ordered planned lessons inside a `teaching_plan`
+- A lesson may optionally belong to a `plan_unit`
+- Supports SIAGE-compatible methodologies
+- Supports `status` as `planned`, `completed`, `postponed`, or `cancelled`
 
 ### `students`
 
@@ -71,47 +89,48 @@
 - `teacher_assignments.class_id -> classes.id`
 - `teacher_assignments.subject_id -> subjects.id`
 - `teacher_assignments.professional_enrollment_id -> professional_enrollments.id`
+- `teaching_plans.teacher_assignment_id -> teacher_assignments.id`
+- `plan_units.teaching_plan_id -> teaching_plans.id`
+- `planned_lessons.teaching_plan_id -> teaching_plans.id`
+- `planned_lessons.plan_unit_id -> plan_units.id`
 - `class_enrollments.class_id -> classes.id`
 - `class_enrollments.student_id -> students.id`
 - `assignment_students.teacher_assignment_id -> teacher_assignments.id`
 - `assignment_students.student_id -> students.id`
 - `sync_errors.sync_run_id -> sync_runs.id`
 
-## Development seed
+## Planning module notes
 
-The repository includes a `supabase/seed.sql` file with development-only data:
-
-- one fictional state school from Paraiba
-- the current semester (`2026.2`)
-- three Informatica classes
-- subjects aligned with the current PRD
+- Planning is now centered on real teacher assignments imported from SIAGE
+- The listing page `/planejamento` works over the 13 real assignment rows
+- The creation flow `/planejamento/novo?atribuicao={id}` creates draft plans only
+- The editor `/planejamento/[planoId]` supports general data, units, and planned lessons
+- There is still no AI generation, no PDF import, and no SIAGE writeback in this phase
 
 ## Temporary security model
 
-Current policies are for development only.
+Current policies are still for development only.
 
 - No authentication is implemented yet
-- Tables are temporarily accessible with the public anon key
-- Row Level Security should remain enabled with permissive development policies during this phase
-- While the remote project policies are being aligned, the current server-only integration may temporarily use `SUPABASE_SECRET_KEY` in backend code only
-- The secret key must never be exposed to browser code, client components, or public environment variables
-- All new SIAGE sync tables keep permissive development RLS policies for now and must be tightened once authentication is added
+- Tables are temporarily accessible with the public anon key through RLS-backed clients
+- New planning tables use permissive development policies for `select`, `insert`, `update`, and `delete`
+- The app must continue using the anon/SSR client for frontend and Server Component reads
+- `SUPABASE_SECRET_KEY` must never be exposed to browser code, client components, or public environment variables
 
 This is intentionally temporary and must change before production.
 
 ## What should change when authentication is added
 
-- Enable Row Level Security on all application tables
-- Replace broad development policies with explicit `select`, `insert`, `update` policies scoped by authenticated users
-- Remove the temporary server-only secret-key fallback once proper policies and authentication are in place
-- Link classes and subjects to a real teacher or membership model
-- Scope SIAGE sync rows to the authenticated professional or tenant model
-- Restrict create and update operations by authenticated user context
-- Review whether semester and school data should remain shared or become scoped by institution
+- Replace broad development policies with authenticated teacher-scoped policies
+- Link `teaching_plans`, `plan_units`, and `planned_lessons` to the authenticated professional context
+- Prevent one teacher from viewing or mutating another teacher's plans
+- Remove any remaining backend secret-key fallback once explicit policies are enough
+- Add audit fields such as `created_by` and `updated_by` where useful
 
 ## Current limitations
 
 - There are no user, profile, or membership tables yet
-- Pedagogical indicators in the Turmas detail page are still simulated
-- No attendance, lesson register, assessment writeback, or SIAGE import job runner exists yet
-- No delete workflows were implemented in this stage
+- Planning is fully local to Supabase and does not write back to SIAGE yet
+- There is no AI-assisted generation in the planning editor yet
+- There are still no attendance, lesson register, or assessment tables connected to this planning flow
+- Ordering is currently done with explicit `position` swaps, not drag and drop

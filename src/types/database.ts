@@ -376,6 +376,132 @@ export type Database = {
         };
         Relationships: Relationship[];
       };
+      teaching_plans: {
+        Row: {
+          id: string;
+          teacher_assignment_id: string;
+          title: string;
+          description: string | null;
+          education_base: "technical" | "bncc";
+          workload_hours: number;
+          weekly_lessons: number;
+          semester: string;
+          status: "draft" | "active" | "completed" | "archived";
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          teacher_assignment_id: string;
+          title: string;
+          description?: string | null;
+          education_base: "technical" | "bncc";
+          workload_hours: number;
+          weekly_lessons: number;
+          semester: string;
+          status?: "draft" | "active" | "completed" | "archived";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          teacher_assignment_id?: string;
+          title?: string;
+          description?: string | null;
+          education_base?: "technical" | "bncc";
+          workload_hours?: number;
+          weekly_lessons?: number;
+          semester?: string;
+          status?: "draft" | "active" | "completed" | "archived";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: Relationship[];
+      };
+      plan_units: {
+        Row: {
+          id: string;
+          teaching_plan_id: string;
+          title: string;
+          description: string | null;
+          position: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          teaching_plan_id: string;
+          title: string;
+          description?: string | null;
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          teaching_plan_id?: string;
+          title?: string;
+          description?: string | null;
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: Relationship[];
+      };
+      planned_lessons: {
+        Row: {
+          id: string;
+          teaching_plan_id: string;
+          plan_unit_id: string | null;
+          title: string;
+          knowledge_objects: string | null;
+          objectives: string | null;
+          methodology: string | null;
+          observations_template: string | null;
+          planned_date: string | null;
+          lesson_number: number;
+          duration_lessons: number;
+          status: "planned" | "completed" | "postponed" | "cancelled";
+          position: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          teaching_plan_id: string;
+          plan_unit_id?: string | null;
+          title: string;
+          knowledge_objects?: string | null;
+          objectives?: string | null;
+          methodology?: string | null;
+          observations_template?: string | null;
+          planned_date?: string | null;
+          lesson_number: number;
+          duration_lessons?: number;
+          status?: "planned" | "completed" | "postponed" | "cancelled";
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          teaching_plan_id?: string;
+          plan_unit_id?: string | null;
+          title?: string;
+          knowledge_objects?: string | null;
+          objectives?: string | null;
+          methodology?: string | null;
+          observations_template?: string | null;
+          planned_date?: string | null;
+          lesson_number?: number;
+          duration_lessons?: number;
+          status?: "planned" | "completed" | "postponed" | "cancelled";
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: Relationship[];
+      };
       students: {
         Row: {
           id: string;
