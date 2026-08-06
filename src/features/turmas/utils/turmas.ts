@@ -1,10 +1,4 @@
-import type {
-  IndicadorTurma,
-  ResumoTurma,
-  SecaoTurma,
-  Turma,
-  TurmasFiltros
-} from "../types";
+import type { SecaoTurma, Turma, TurmasFiltros } from "../types";
 
 export const turmaSections: Array<{ id: SecaoTurma; label: string }> = [
   { id: "visao-geral", label: "Visão geral" },
@@ -79,59 +73,6 @@ export function getTurmasFilterOptions(turmas: Turma[]) {
   };
 }
 
-export function getTurmaIndicators(turma: Turma): IndicadorTurma[] {
-  return [
-    {
-      id: "proxima-aula",
-      label: "Próxima aula",
-      valor: turma.resumo.proximaAula,
-      apoio: "Indicador provisório enquanto o cronograma real ainda não foi implementado."
-    },
-    {
-      id: "conteudo-previsto",
-      label: "Conteúdo previsto",
-      valor: turma.resumo.conteudoPrevisto,
-      apoio: "Tema principal planejado para a próxima aula."
-    },
-    {
-      id: "aulas-realizadas",
-      label: "Aulas realizadas",
-      valor: String(turma.resumo.aulasRealizadas),
-      apoio: "Quantidade simulada para a visão inicial do diário."
-    },
-    {
-      id: "aulas-planejadas",
-      label: "Aulas planejadas",
-      valor: String(turma.resumo.aulasPlanejadas),
-      apoio: "Total previsto no planejamento provisório."
-    },
-    {
-      id: "carga-cumprida",
-      label: "Carga horária cumprida",
-      valor: `${turma.resumo.cargaHorariaCumprida}h`,
-      apoio: "Carga provisória derivada das disciplinas importadas."
-    },
-    {
-      id: "frequencias-pendentes",
-      label: "Frequências pendentes",
-      valor: String(turma.resumo.frequenciasPendentes),
-      apoio: "Contagem simulada até o módulo de frequência existir."
-    },
-    {
-      id: "registros-pendentes",
-      label: "Registros pendentes",
-      valor: String(turma.resumo.registrosPendentes),
-      apoio: "Aulas aguardando preenchimento futuro."
-    },
-    {
-      id: "avaliacoes-cadastradas",
-      label: "Avaliações cadastradas",
-      valor: String(turma.resumo.avaliacoesCadastradas),
-      apoio: "Total provisório ligado às disciplinas da turma."
-    }
-  ];
-}
-
 export function getTurmaSection(section?: string): SecaoTurma {
   const sectionId = section ?? "visao-geral";
 
@@ -154,10 +95,6 @@ export function formatTurno(turno: string) {
   }
 
   return turno === "integral" ? "Integral" : turno;
-}
-
-export function formatModalidade(modalidade: string) {
-  return modalidade === "eja" ? "EJA" : "Integral";
 }
 
 export function formatStatus(status: string) {
@@ -198,55 +135,4 @@ export function getTurmaDisplayName(
   return prefixoSerie && !turma.nome.includes(prefixoSerie)
     ? `${prefixoSerie} - ${turma.nome}`
     : turma.nome;
-}
-
-export function buildTurmaResumo(turma: {
-  nome: string;
-  quantidadeAlunos: number;
-  disciplinas: Array<{ nome: string; cargaHorariaTotal: number | null }>;
-}): ResumoTurma {
-  const primeiraDisciplina = turma.disciplinas[0]?.nome ?? "Conteúdo pendente";
-  const segundaDisciplina = turma.disciplinas[1]?.nome ?? primeiraDisciplina;
-  const aulasPlanejadas = Math.max(turma.disciplinas.length * 6, 6);
-  const aulasRealizadas = Math.max(
-    Math.min(aulasPlanejadas - 2, turma.quantidadeAlunos > 0 ? 4 : 0),
-    0
-  );
-  const cargaHorariaCumprida = turma.disciplinas.reduce(
-    (total, disciplina) =>
-      total + Math.min(disciplina.cargaHorariaTotal ?? 0, 20),
-    0
-  );
-
-  return {
-    proximaAula:
-      turma.quantidadeAlunos > 0 ? "Próxima aula agendada" : "Sem aulas planejadas",
-    conteudoPrevisto: primeiraDisciplina,
-    aulasRealizadas,
-    aulasPlanejadas,
-    cargaHorariaCumprida,
-    frequenciasPendentes: turma.quantidadeAlunos > 0 ? 1 : 0,
-    registrosPendentes: turma.quantidadeAlunos > 0 ? 2 : 0,
-    avaliacoesCadastradas: turma.disciplinas.length,
-    proximasAulas: turma.quantidadeAlunos
-      ? [
-          {
-            id: `${turma.nome}-aula-1`,
-            data: "2026-08-03",
-            titulo: primeiraDisciplina,
-            conteudo: `Planejamento introdutório para ${primeiraDisciplina}.`,
-            status: "planejada",
-            cargaHoraria: 2
-          },
-          {
-            id: `${turma.nome}-aula-2`,
-            data: "2026-08-10",
-            titulo: segundaDisciplina,
-            conteudo: `Sequência prevista da disciplina ${segundaDisciplina}.`,
-            status: "planejada",
-            cargaHoraria: 2
-          }
-        ]
-      : []
-  };
 }

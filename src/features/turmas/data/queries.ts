@@ -4,8 +4,15 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createRlsClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
 
-import { buildTurmaResumo, filterTurmas } from "../utils/turmas";
-import type { Aluno, Disciplina, Escola, PeriodoLetivo, Turma, TurmasFiltros } from "../types";
+import { filterTurmas } from "../utils/turmas";
+import type {
+  Escola,
+  PeriodoLetivo,
+  Turma,
+  TurmaAluno,
+  TurmaDisciplina,
+  TurmasFiltros
+} from "../types";
 
 type SchoolRow = Database["public"]["Tables"]["schools"]["Row"];
 type AcademicPeriodRow = Database["public"]["Tables"]["academic_periods"]["Row"];
@@ -171,12 +178,12 @@ export async function getTurmasData(
       };
     }
 
-    const turmas = ((data ?? []) as ClassWithRelations[]).map((row) =>
-      mapClassToTurma(row)
-    );
+    const turmas = ((data ?? []) as ClassWithRelations[]).map(mapClassToTurma);
 
     const periodos = Array.from(
-      new Map(turmas.map((turma) => [turma.periodoLetivo.id, turma.periodoLetivo])).values()
+      new Map(
+        turmas.map((turma) => [turma.periodoLetivo.id, turma.periodoLetivo])
+      ).values()
     ).sort((left, right) => (right.ano ?? 0) - (left.ano ?? 0));
 
     return {
@@ -266,12 +273,7 @@ function mapClassToTurma(row: ClassWithRelations): Turma {
     escola: mapSchool(row.schools),
     periodoLetivo: mapAcademicPeriod(row.academic_periods),
     disciplinas,
-    alunos,
-    resumo: buildTurmaResumo({
-      nome: row.name,
-      quantidadeAlunos,
-      disciplinas
-    })
+    alunos
   };
 }
 
@@ -299,8 +301,8 @@ function mapAcademicPeriod(
   };
 }
 
-function mapSubjects(rows: AssignmentWithSubject[] | null): Disciplina[] {
-  const subjectMap = new Map<string, Disciplina>();
+function mapSubjects(rows: AssignmentWithSubject[] | null): TurmaDisciplina[] {
+  const subjectMap = new Map<string, TurmaDisciplina>();
 
   for (const assignment of rows ?? []) {
     if (!assignment.subjects) {
@@ -328,8 +330,8 @@ function mapSubjects(rows: AssignmentWithSubject[] | null): Disciplina[] {
   );
 }
 
-function mapStudents(rows: EnrollmentWithStudent[] | null): Aluno[] {
-  const studentMap = new Map<string, Aluno>();
+function mapStudents(rows: EnrollmentWithStudent[] | null): TurmaAluno[] {
+  const studentMap = new Map<string, TurmaAluno>();
 
   for (const enrollment of rows ?? []) {
     if (!enrollment.students) {

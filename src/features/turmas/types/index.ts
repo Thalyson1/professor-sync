@@ -1,6 +1,11 @@
 export type ModalidadeTurma = "integral" | "eja";
 
-export type TurnoTurma = "integral" | "morning" | "afternoon" | "night" | string;
+export type TurnoTurma =
+  | "integral"
+  | "morning"
+  | "afternoon"
+  | "night"
+  | string;
 
 export type StatusTurma = "active" | "inactive" | string;
 
@@ -41,7 +46,7 @@ export type PeriodoLetivo = {
   ativo: boolean;
 };
 
-export type Disciplina = {
+export type TurmaDisciplina = {
   id: string;
   externalId: string | null;
   curriculumSubjectExternalId: string | null;
@@ -52,7 +57,7 @@ export type Disciplina = {
   status: StatusDisciplina | string;
 };
 
-export type Aluno = {
+export type TurmaAluno = {
   id: string;
   externalId: string | null;
   nome: string;
@@ -69,25 +74,6 @@ export type Aula = {
   cargaHoraria: number;
 };
 
-export type IndicadorTurma = {
-  id: string;
-  label: string;
-  valor: string;
-  apoio: string;
-};
-
-export type ResumoTurma = {
-  proximaAula: string;
-  conteudoPrevisto: string;
-  aulasRealizadas: number;
-  aulasPlanejadas: number;
-  cargaHorariaCumprida: number;
-  frequenciasPendentes: number;
-  registrosPendentes: number;
-  avaliacoesCadastradas: number;
-  proximasAulas: Aula[];
-};
-
 export type Turma = {
   id: string;
   externalId: string | null;
@@ -102,9 +88,8 @@ export type Turma = {
   status: StatusTurma;
   escola: Escola;
   periodoLetivo: PeriodoLetivo;
-  disciplinas: Disciplina[];
-  alunos: Aluno[];
-  resumo: ResumoTurma;
+  disciplinas: TurmaDisciplina[];
+  alunos: TurmaAluno[];
 };
 
 export type TurmasFiltros = {

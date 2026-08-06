@@ -54,12 +54,12 @@ export default async function TurmaDetailPage({
       <PageSection
         title={
           activeSection === "visao-geral"
-            ? "Visão geral da turma"
+            ? "Detalhes da turma"
             : "Seção em desenvolvimento"
         }
         description={
           activeSection === "visao-geral"
-            ? "Resumo da turma com dados reais de escola, disciplinas e alunos, além de indicadores pedagógicos ainda simulados."
+            ? "Dados reais da turma, disciplinas sem repetição e lista de alunos ordenada por nome."
             : "Esta área do diário já está preparada para navegação, mas o conteúdo funcional será desenvolvido em etapas futuras."
         }
       >
