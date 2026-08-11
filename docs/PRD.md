@@ -568,3 +568,42 @@ Fora de escopo nesta sprint:
 - calendário automático;
 - frequência;
 - avaliações.
+
+---
+
+# Atualização de Escopo — IA Assistida no Planejamento
+
+Estado atual validado em 11 de agosto de 2026:
+
+- planejamento semestral já utiliza atribuições reais do SIAGE importadas para o Supabase;
+- criação e edição manual de planejamento já estão disponíveis;
+- a IA foi adicionada apenas como apoio para gerar rascunhos revisáveis.
+
+Escopo implementado nesta sprint:
+
+- botão `Gerar com IA` no fluxo de criação e edição de planejamento;
+- rotas `/planejamento/novo/ia` e `/planejamento/[planoId]/ia`;
+- geração server-side de rascunho estruturado em JSON;
+- preview editável antes de salvar;
+- confirmação explícita do professor antes de persistir no banco;
+- uso apenas de metodologias compatíveis com o SIAGE;
+- camada isolada para provider, prompt, schema, parser e validação;
+- provider atual baseado em OpenAI com possibilidade futura de troca.
+
+Regras desta fase:
+
+- a IA gera somente um rascunho para revisão;
+- nada é salvo automaticamente no banco;
+- nada é enviado ao SIAGE;
+- nenhuma informação pessoal desnecessária de estudantes ou do professor é enviada ao provedor de IA;
+- no modo BNCC, a IA não deve inventar códigos ou habilidades não fornecidos.
+
+Fora de escopo nesta sprint:
+
+- escrita no SIAGE;
+- frequência;
+- avaliações;
+- geração de provas;
+- importação de PDF ou Word;
+- embeddings;
+- RAG.

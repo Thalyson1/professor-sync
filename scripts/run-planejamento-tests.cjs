@@ -40,6 +40,7 @@ const {
 ));
 const {
   canArchiveTeachingPlan,
+  getEducationBaseLabel,
   getTeachingPlanStatusLabel,
   isEducationBase,
   isPlannedLessonStatus,
@@ -47,6 +48,10 @@ const {
 } = require(path.join(
   projectRoot,
   "src/features/planejamento/utils/status-rules.ts"
+));
+const { parseAiPlanningDraft } = require(path.join(
+  projectRoot,
+  "src/features/planejamento/ai/parser.ts"
 ));
 
 const tests = [
@@ -210,6 +215,82 @@ const tests = [
     run() {
       assert.equal(getTeachingPlanStatusLabel("draft"), "Rascunho");
       assert.equal(getTeachingPlanStatusLabel("completed"), "Concluído");
+    }
+  }
+  ,
+  {
+    name: "getEducationBaseLabel returns Portuguese labels",
+    run() {
+      assert.equal(getEducationBaseLabel("technical"), "Base técnica");
+      assert.equal(getEducationBaseLabel("bncc"), "BNCC");
+    }
+  },
+  {
+    name: "parseAiPlanningDraft accepts a valid structured draft",
+    run() {
+      const result = parseAiPlanningDraft({
+        title: "Plano gerado",
+        description: "Organização semestral",
+        educationBase: "technical",
+        generalObjectives: ["Consolidar fundamentos da disciplina"],
+        methodologies: ["Aula dialogada", "Aula prática"],
+        assessmentStrategies: ["Avaliações diagnósticas e atividades práticas"],
+        units: [
+          {
+            title: "Unidade 1",
+            description: "Introdução aos conteúdos centrais",
+            position: 0,
+            lessons: [
+              {
+                lessonNumber: 1,
+                title: "Aula 1",
+                knowledgeObjects: "Conceitos iniciais",
+                objectives: "Compreender os fundamentos",
+                methodology: "Aula dialogada",
+                observationsTemplate: "Registrar avanços da turma",
+                durationLessons: 1,
+                position: 0
+              }
+            ]
+          }
+        ]
+      });
+
+      assert.equal(result.success, true);
+    }
+  },
+  {
+    name: "parseAiPlanningDraft rejects invalid SIAGE methodologies",
+    run() {
+      const result = parseAiPlanningDraft({
+        title: "Plano gerado",
+        description: "Organização semestral",
+        educationBase: "technical",
+        generalObjectives: ["Consolidar fundamentos da disciplina"],
+        methodologies: ["Metodologia inventada"],
+        assessmentStrategies: ["Avaliações diagnósticas"],
+        units: [
+          {
+            title: "Unidade 1",
+            description: "Introdução",
+            position: 0,
+            lessons: [
+              {
+                lessonNumber: 1,
+                title: "Aula 1",
+                knowledgeObjects: "Conceitos iniciais",
+                objectives: "Compreender os fundamentos",
+                methodology: "Metodologia inventada",
+                observationsTemplate: "Registrar avanços da turma",
+                durationLessons: 1,
+                position: 0
+              }
+            ]
+          }
+        ]
+      });
+
+      assert.equal(result.success, false);
     }
   }
 ];

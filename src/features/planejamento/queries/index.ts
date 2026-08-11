@@ -192,7 +192,9 @@ export async function listTeachingPlans(
     }
 
     return {
-      data: ((data ?? []) as TeachingPlanListRow[]).map(mapTeachingPlanListItem),
+      data: ((data ?? []) as unknown as TeachingPlanListRow[]).map(
+        mapTeachingPlanListItem
+      ),
       error: null,
       configured: true
     };
@@ -237,7 +239,7 @@ export async function getTeachingPlanById(
     }
 
     return {
-      data: data ? mapTeachingPlanDetail(data as TeachingPlanDetailRow) : null,
+      data: data ? mapTeachingPlanDetail(data as unknown as TeachingPlanDetailRow) : null,
       error: null,
       configured: true
     };
@@ -302,7 +304,7 @@ export async function listTeachingPlanAssignments(): Promise<
     }
 
     return {
-      data: ((data ?? []) as TeacherAssignmentWithRelations[]).map(
+      data: ((data ?? []) as unknown as TeacherAssignmentWithRelations[]).map(
         mapTeachingPlanAssignmentSummary
       ),
       error: null,

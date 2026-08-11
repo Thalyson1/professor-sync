@@ -699,7 +699,23 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      apply_ai_teaching_plan_draft: {
+        Args: {
+          p_target_plan_id: string | null;
+          p_teacher_assignment_id: string;
+          p_title: string;
+          p_description: string | null;
+          p_education_base: "technical" | "bncc";
+          p_workload_hours: number | null;
+          p_weekly_lessons: number | null;
+          p_semester: string | null;
+          p_status: "draft" | "active" | "completed" | "archived";
+          p_units: Json;
+        };
+        Returns: string;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

@@ -178,7 +178,9 @@ export async function getTurmasData(
       };
     }
 
-    const turmas = ((data ?? []) as ClassWithRelations[]).map(mapClassToTurma);
+    const turmas = ((data ?? []) as unknown as ClassWithRelations[]).map(
+      mapClassToTurma
+    );
 
     const periodos = Array.from(
       new Map(
@@ -236,7 +238,7 @@ export async function getTurmaDetail(
     }
 
     return {
-      data: data ? mapClassToTurma(data as ClassWithRelations) : null,
+      data: data ? mapClassToTurma(data as unknown as ClassWithRelations) : null,
       error: null,
       configured: true
     };

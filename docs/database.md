@@ -138,6 +138,8 @@ The planning module now has a dedicated server-side data layer in `src/features/
 - `deletePlannedLesson(input)`
 - `reorderPlanUnits(input)`
 - `reorderPlannedLessons(input)`
+- `generateTeachingPlanWithAiAction(previousState, formData)`
+- `applyGeneratedTeachingPlanAction(formData)`
 
 These functions:
 
@@ -153,6 +155,7 @@ These functions:
 - lesson numbers are validated as unique inside each planning record
 - lesson and unit ownership is validated before updates and deletions
 - unit reordering uses a two-step position swap to respect the unique constraint on `(teaching_plan_id, position)`
+- lesson reordering also uses a two-step position swap to respect the unique constraint on `(teaching_plan_id, position)`
 
 ### Compatibility layer
 
@@ -162,6 +165,53 @@ These functions:
 - `src/features/planejamento/types.ts`
 
 These files preserve the previous import paths used by the current pages while delegating all real logic to the new data layer.
+
+## AI-assisted planning
+
+The planning module now also has an isolated AI generation layer in `src/features/planejamento/ai/`.
+
+### AI folders
+
+- `provider.ts`: provider abstraction and the current server-only OpenAI implementation
+- `prompt.ts`: prompt builders with pedagogical and privacy constraints
+- `schema.ts`: JSON Schema expected from the model response
+- `parser.ts`: normalization and parsing of the raw model payload
+- `validation.ts`: business validation for the generated draft
+- `types.ts`: shared contracts for request, response, and review state
+
+### Current provider
+
+- Current implementation: OpenAI
+- Required server environment variable: `OPENAI_API_KEY`
+- Optional model override: `OPENAI_MODEL`
+- Gemini remains planned in the abstraction but is not implemented yet
+
+### Privacy rules
+
+- AI calls happen only on the server
+- The browser never receives the API key
+- The prompt only sends pedagogical data needed for generation
+- No student names, CPF, enrollment numbers, or other unnecessary personal data are sent to the model
+
+### AI flow
+
+- `/planejamento/novo/ia` generates a draft from a real `teacher_assignment`
+- `/planejamento/[planoId]/ia` generates a draft to replace or revise an existing plan
+- The model returns structured JSON only
+- The generated draft is shown in a review step before any persistence
+- The teacher may regenerate, edit, confirm, or cancel
+- Persistence only happens after confirmation
+
+### Transactional apply
+
+- Migration `202608110001_add_planning_ai_apply_function.sql` adds `public.apply_ai_teaching_plan_draft(...)`
+- The function recreates units and lessons in one transaction when the teacher confirms the reviewed draft
+- This avoids partial writes between the parent plan, units, and planned lessons
+
+### Current limitation
+
+- `generalObjectives`, `methodologies`, and `assessmentStrategies` from the AI draft are currently persisted by composing them into `teaching_plans.description`
+- Dedicated database columns for those fields may be added in a future migration if the product requires first-class filtering or reporting over them
 
 ## Temporary security model
 
@@ -187,6 +237,6 @@ This is intentionally temporary and must change before production.
 
 - There are no user, profile, or membership tables yet
 - Planning is fully local to Supabase and does not write back to SIAGE yet
-- There is no AI-assisted generation in the planning editor yet
+- AI-assisted planning currently generates drafts only and never writes to SIAGE
 - There are still no attendance, lesson register, or assessment tables connected to this planning flow
 - Ordering is currently done with explicit `position` swaps, not drag and drop

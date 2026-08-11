@@ -507,6 +507,18 @@ export async function reorderPlannedLessons(
     for (const reorderItem of buildReorderMap(input.lessonIdsInOrder)) {
       const { error: updateError } = await supabase
         .from("planned_lessons")
+        .update({ position: reorderItem.position + 1000 })
+        .eq("id", reorderItem.id)
+        .eq("teaching_plan_id", input.teachingPlanId);
+
+      if (updateError) {
+        return failFromError(updateError.message);
+      }
+    }
+
+    for (const reorderItem of buildReorderMap(input.lessonIdsInOrder)) {
+      const { error: updateError } = await supabase
+        .from("planned_lessons")
         .update({ position: reorderItem.position })
         .eq("id", reorderItem.id)
         .eq("teaching_plan_id", input.teachingPlanId);
