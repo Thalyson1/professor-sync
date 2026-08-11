@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "test": "node scripts/run-planejamento-tests.cjs",
     "siage:poc": "node scripts/siage-poc/run.mjs",
     "siage:poc:install": "playwright install chromium",
     "siage:read": "node scripts/siage-poc/sync-read.mjs",

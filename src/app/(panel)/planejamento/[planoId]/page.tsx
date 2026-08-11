@@ -145,7 +145,12 @@ export default async function PlanoEditorPage({
 
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium text-[var(--foreground)]">Semestre</span>
-            <input required name="semester" defaultValue={plan.semester} className={inputClassName} />
+            <input
+              required
+              name="semester"
+              defaultValue={plan.semester ?? ""}
+              className={inputClassName}
+            />
           </label>
 
           <label className="flex flex-col gap-2">
@@ -155,7 +160,7 @@ export default async function PlanoEditorPage({
               type="number"
               min="1"
               name="workloadHours"
-              defaultValue={plan.workloadHours}
+              defaultValue={plan.workloadHours ?? ""}
               className={inputClassName}
             />
           </label>
@@ -167,7 +172,7 @@ export default async function PlanoEditorPage({
               type="number"
               min="1"
               name="weeklyLessons"
-              defaultValue={plan.weeklyLessons}
+              defaultValue={plan.weeklyLessons ?? ""}
               className={inputClassName}
             />
           </label>
@@ -177,7 +182,7 @@ export default async function PlanoEditorPage({
             <textarea
               name="description"
               rows={5}
-              defaultValue={plan.description}
+              defaultValue={plan.description ?? ""}
               className={textareaClassName}
             />
           </label>
@@ -255,7 +260,7 @@ export default async function PlanoEditorPage({
                     <textarea
                       name="description"
                       rows={3}
-                      defaultValue={unit.description}
+                      defaultValue={unit.description ?? ""}
                       className={textareaClassName}
                     />
                   </div>
@@ -419,7 +424,7 @@ export default async function PlanoEditorPage({
                     <textarea
                       name="knowledgeObjects"
                       rows={3}
-                      defaultValue={lesson.knowledgeObjects}
+                      defaultValue={lesson.knowledgeObjects ?? ""}
                       className={textareaClassName}
                     />
                   </label>
@@ -429,7 +434,7 @@ export default async function PlanoEditorPage({
                     <textarea
                       name="objectives"
                       rows={3}
-                      defaultValue={lesson.objectives}
+                      defaultValue={lesson.objectives ?? ""}
                       className={textareaClassName}
                     />
                   </label>
@@ -455,7 +460,7 @@ export default async function PlanoEditorPage({
                     <textarea
                       name="observationsTemplate"
                       rows={3}
-                      defaultValue={lesson.observationsTemplate}
+                      defaultValue={lesson.observationsTemplate ?? ""}
                       className={textareaClassName}
                     />
                   </label>

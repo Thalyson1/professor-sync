@@ -1,456 +1,269 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { createRlsClient } from "@/lib/supabase/server";
-import type { Database } from "@/types/database";
+import { getTeachingPlanById } from "./queries";
+import {
+  archiveTeachingPlan,
+  createPlannedLesson,
+  createPlanUnit,
+  createTeachingPlan,
+  deletePlannedLesson,
+  deletePlanUnit,
+  reorderPlannedLessons,
+  reorderPlanUnits,
+  updatePlannedLesson,
+  updatePlanUnit,
+  updateTeachingPlan
+} from "./actions/index";
+import { isPlannedLessonStatus } from "./utils/status-rules";
 
-import { SIAGE_METHODOLOGIES } from "./constants";
-
-type ActionResult = never;
-
-export async function createTeachingPlanAction(
-  formData: FormData
-): Promise<ActionResult> {
-  if (!isSupabaseConfigured()) {
-    redirect("/planejamento?error=Supabase%20n%C3%A3o%20configurado");
-  }
-
-  const teacherAssignmentId = getRequiredString(formData, "teacherAssignmentId");
-  const title = getRequiredString(formData, "title");
-  const educationBase = getRequiredString(formData, "educationBase");
-  const workloadHours = getPositiveNumber(formData, "workloadHours");
-  const weeklyLessons = getPositiveNumber(formData, "weeklyLessons");
-  const semester = getRequiredString(formData, "semester");
-  const description = getOptionalString(formData, "description");
-
-  if (!teacherAssignmentId || !title || !educationBase || !workloadHours || !weeklyLessons || !semester) {
-    redirect(
-      `/planejamento/novo?${buildParams({
-        atribuicao: teacherAssignmentId,
-        error: "Preencha todos os campos obrigatórios do planejamento."
-      })}`
-    );
-  }
-
-  const payload: Database["public"]["Tables"]["teaching_plans"]["Insert"] = {
-    teacher_assignment_id: teacherAssignmentId,
-    title,
-    education_base: educationBase as Database["public"]["Tables"]["teaching_plans"]["Insert"]["education_base"],
-    workload_hours: workloadHours,
-    weekly_lessons: weeklyLessons,
-    semester,
-    description,
+export async function createTeachingPlanAction(formData: FormData) {
+  const result = await createTeachingPlan({
+    teacherAssignmentId: getString(formData, "teacherAssignmentId"),
+    title: getString(formData, "title"),
+    description: getOptionalString(formData, "description"),
+    educationBase: getString(formData, "educationBase"),
+    workloadHours: getOptionalNumber(formData, "workloadHours"),
+    weeklyLessons: getOptionalInteger(formData, "weeklyLessons"),
+    semester: getOptionalString(formData, "semester"),
     status: "draft"
-  };
+  });
 
-  const supabase = await createRlsClient();
-  const { data, error } = await supabase
-    .from("teaching_plans")
-    .insert(payload)
-    .select("id")
-    .single();
-
-  if (error || !data) {
-    redirect(
-      `/planejamento/novo?${buildParams({
-        atribuicao: teacherAssignmentId,
-        error: error?.message ?? "Não foi possível criar o planejamento."
-      })}`
-    );
+  if (!result.success) {
+    redirect(`/planejamento/novo?error=${encodeURIComponent(result.message)}`);
   }
 
-  revalidatePath("/planejamento");
-  redirect(`/planejamento/${data.id}?notice=created`);
+  redirect(`/planejamento/${result.data.id}?notice=${encodeURIComponent(result.message)}`);
 }
 
-export async function updateTeachingPlanAction(
-  formData: FormData
-): Promise<ActionResult> {
-  const planId = getRequiredString(formData, "planId");
-  const title = getRequiredString(formData, "title");
-  const description = getOptionalString(formData, "description");
-  const educationBase = getRequiredString(formData, "educationBase");
-  const workloadHours = getPositiveNumber(formData, "workloadHours");
-  const weeklyLessons = getPositiveNumber(formData, "weeklyLessons");
-  const semester = getRequiredString(formData, "semester");
-  const status = getRequiredString(formData, "status");
+export async function updateTeachingPlanAction(formData: FormData) {
+  const planId = getString(formData, "planId");
+  const result = await updateTeachingPlan({
+    id: planId,
+    title: getString(formData, "title"),
+    description: getOptionalString(formData, "description"),
+    educationBase: getString(formData, "educationBase"),
+    workloadHours: getOptionalNumber(formData, "workloadHours"),
+    weeklyLessons: getOptionalInteger(formData, "weeklyLessons"),
+    semester: getOptionalString(formData, "semester"),
+    status: getString(formData, "status")
+  });
 
-  if (!planId || !title || !educationBase || !workloadHours || !weeklyLessons || !semester || !status) {
-    redirect(`/planejamento/${planId}?error=Preencha%20todos%20os%20campos%20obrigat%C3%B3rios`);
-  }
-
-  const payload: Database["public"]["Tables"]["teaching_plans"]["Update"] = {
-    title,
-    description,
-    education_base: educationBase as Database["public"]["Tables"]["teaching_plans"]["Update"]["education_base"],
-    workload_hours: workloadHours,
-    weekly_lessons: weeklyLessons,
-    semester,
-    status: status as Database["public"]["Tables"]["teaching_plans"]["Update"]["status"]
-  };
-
-  const supabase = await createRlsClient();
-  const { error } = await supabase
-    .from("teaching_plans")
-    .update(payload)
-    .eq("id", planId);
-
-  if (error) {
-    redirect(`/planejamento/${planId}?error=${encodeURIComponent(error.message)}`);
-  }
-
-  revalidatePath("/planejamento");
-  revalidatePath(`/planejamento/${planId}`);
-  redirect(`/planejamento/${planId}?notice=updated`);
+  redirectToPlanResult(planId, result);
 }
 
-export async function deleteTeachingPlanAction(
-  formData: FormData
-): Promise<ActionResult> {
-  const planId = getRequiredString(formData, "planId");
+export async function deleteTeachingPlanAction(formData: FormData) {
+  const planId = getString(formData, "planId");
+  const result = await archiveTeachingPlan({ id: planId });
 
-  if (!planId) {
-    redirect("/planejamento?error=Plano%20inv%C3%A1lido");
+  if (!result.success) {
+    redirect(`/planejamento/${planId}?error=${encodeURIComponent(result.message)}`);
   }
 
-  const supabase = await createRlsClient();
-  const { error } = await supabase.from("teaching_plans").delete().eq("id", planId);
-
-  if (error) {
-    redirect(`/planejamento/${planId}?error=${encodeURIComponent(error.message)}`);
-  }
-
-  revalidatePath("/planejamento");
-  redirect("/planejamento?notice=deleted");
+  redirect(`/planejamento?notice=${encodeURIComponent(result.message)}`);
 }
 
-export async function createPlanUnitAction(formData: FormData): Promise<ActionResult> {
-  const planId = getRequiredString(formData, "planId");
-  const title = getRequiredString(formData, "title");
-  const description = getOptionalString(formData, "description");
+export async function createPlanUnitAction(formData: FormData) {
+  const planId = getString(formData, "planId");
+  const result = await createPlanUnit({
+    teachingPlanId: planId,
+    title: getString(formData, "title"),
+    description: getOptionalString(formData, "description")
+  });
 
-  if (!planId || !title) {
-    redirect(`/planejamento/${planId}?error=Informe%20o%20t%C3%ADtulo%20da%20unidade`);
-  }
-
-  const supabase = await createRlsClient();
-  const { data: lastUnit } = await supabase
-    .from("plan_units")
-    .select("position")
-    .eq("teaching_plan_id", planId)
-    .order("position", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const payload: Database["public"]["Tables"]["plan_units"]["Insert"] = {
-    teaching_plan_id: planId,
-    title,
-    description,
-    position: (lastUnit?.position ?? 0) + 1
-  };
-
-  const { error } = await supabase.from("plan_units").insert(payload);
-
-  if (error) {
-    redirect(`/planejamento/${planId}?error=${encodeURIComponent(error.message)}`);
-  }
-
-  revalidatePath(`/planejamento/${planId}`);
-  redirect(`/planejamento/${planId}?notice=unit-created`);
+  redirectToPlanResult(planId, result);
 }
 
-export async function updatePlanUnitAction(formData: FormData): Promise<ActionResult> {
-  const planId = getRequiredString(formData, "planId");
-  const unitId = getRequiredString(formData, "unitId");
-  const title = getRequiredString(formData, "title");
-  const description = getOptionalString(formData, "description");
+export async function updatePlanUnitAction(formData: FormData) {
+  const planId = getString(formData, "planId");
+  const result = await updatePlanUnit({
+    id: getString(formData, "unitId"),
+    teachingPlanId: planId,
+    title: getString(formData, "title"),
+    description: getOptionalString(formData, "description")
+  });
 
-  if (!planId || !unitId || !title) {
-    redirect(`/planejamento/${planId}?error=Dados%20inv%C3%A1lidos%20da%20unidade`);
-  }
-
-  const supabase = await createRlsClient();
-  const { error } = await supabase
-    .from("plan_units")
-    .update({ title, description })
-    .eq("id", unitId);
-
-  if (error) {
-    redirect(`/planejamento/${planId}?error=${encodeURIComponent(error.message)}`);
-  }
-
-  revalidatePath(`/planejamento/${planId}`);
-  redirect(`/planejamento/${planId}?notice=unit-updated`);
+  redirectToPlanResult(planId, result);
 }
 
-export async function movePlanUnitAction(formData: FormData): Promise<ActionResult> {
-  const planId = getRequiredString(formData, "planId");
-  const unitId = getRequiredString(formData, "unitId");
-  const direction = getRequiredString(formData, "direction");
+export async function deletePlanUnitAction(formData: FormData) {
+  const planId = getString(formData, "planId");
+  const result = await deletePlanUnit({
+    id: getString(formData, "unitId"),
+    teachingPlanId: planId
+  });
 
-  if (!planId || !unitId || !direction) {
-    redirect(`/planejamento/${planId}?error=Movimenta%C3%A7%C3%A3o%20inv%C3%A1lida`);
-  }
-
-  const supabase = await createRlsClient();
-  const { data: units, error } = await supabase
-    .from("plan_units")
-    .select("id, position")
-    .eq("teaching_plan_id", planId)
-    .order("position", { ascending: true });
-
-  if (error || !units) {
-    redirect(`/planejamento/${planId}?error=${encodeURIComponent(error?.message ?? "Não foi possível ordenar as unidades.")}`);
-  }
-
-  const currentIndex = units.findIndex((unit) => unit.id === unitId);
-  const targetIndex =
-    direction === "up" ? currentIndex - 1 : currentIndex + 1;
-
-  if (currentIndex < 0 || targetIndex < 0 || targetIndex >= units.length) {
-    redirect(`/planejamento/${planId}?notice=no-change`);
-  }
-
-  const currentUnit = units[currentIndex];
-  const targetUnit = units[targetIndex];
-
-  await supabase.from("plan_units").update({ position: -1 }).eq("id", currentUnit.id);
-  await supabase
-    .from("plan_units")
-    .update({ position: currentUnit.position })
-    .eq("id", targetUnit.id);
-  await supabase
-    .from("plan_units")
-    .update({ position: targetUnit.position })
-    .eq("id", currentUnit.id);
-
-  revalidatePath(`/planejamento/${planId}`);
-  redirect(`/planejamento/${planId}?notice=unit-moved`);
+  redirectToPlanResult(planId, result);
 }
 
-export async function deletePlanUnitAction(formData: FormData): Promise<ActionResult> {
-  const planId = getRequiredString(formData, "planId");
-  const unitId = getRequiredString(formData, "unitId");
+export async function createPlannedLessonAction(formData: FormData) {
+  const planId = getString(formData, "planId");
+  const result = await createPlannedLesson({
+    teachingPlanId: planId,
+    planUnitId: getOptionalString(formData, "planUnitId"),
+    title: getString(formData, "title"),
+    knowledgeObjects: getOptionalString(formData, "knowledgeObjects"),
+    objectives: getOptionalString(formData, "objectives"),
+    methodology: getOptionalString(formData, "methodology"),
+    observationsTemplate: getOptionalString(formData, "observationsTemplate"),
+    plannedDate: getOptionalString(formData, "plannedDate"),
+    lessonNumber: getOptionalInteger(formData, "lessonNumber") ?? 1,
+    durationLessons: getOptionalInteger(formData, "durationLessons") ?? 1,
+    status: "planned"
+  });
 
-  if (!planId || !unitId) {
-    redirect(`/planejamento/${planId}?error=Unidade%20inv%C3%A1lida`);
-  }
-
-  const supabase = await createRlsClient();
-  const { error } = await supabase.from("plan_units").delete().eq("id", unitId);
-
-  if (error) {
-    redirect(`/planejamento/${planId}?error=${encodeURIComponent(error.message)}`);
-  }
-
-  revalidatePath(`/planejamento/${planId}`);
-  redirect(`/planejamento/${planId}?notice=unit-deleted`);
+  redirectToPlanResult(planId, result);
 }
 
-export async function createPlannedLessonAction(
-  formData: FormData
-): Promise<ActionResult> {
-  const planId = getRequiredString(formData, "planId");
-  const planUnitId = getOptionalString(formData, "planUnitId");
-  const title = getRequiredString(formData, "title");
-  const knowledgeObjects = getOptionalString(formData, "knowledgeObjects");
-  const objectives = getOptionalString(formData, "objectives");
-  const methodology = getOptionalString(formData, "methodology");
-  const observationsTemplate = getOptionalString(formData, "observationsTemplate");
-  const plannedDate = getOptionalString(formData, "plannedDate");
-  const durationLessons = getPositiveNumber(formData, "durationLessons");
+export async function updatePlannedLessonAction(formData: FormData) {
+  const planId = getString(formData, "planId");
+  const rawStatus = getString(formData, "status");
+  const result = await updatePlannedLesson({
+    id: getString(formData, "lessonId"),
+    teachingPlanId: planId,
+    planUnitId: getOptionalString(formData, "planUnitId"),
+    title: getString(formData, "title"),
+    knowledgeObjects: getOptionalString(formData, "knowledgeObjects"),
+    objectives: getOptionalString(formData, "objectives"),
+    methodology: getOptionalString(formData, "methodology"),
+    observationsTemplate: getOptionalString(formData, "observationsTemplate"),
+    plannedDate: getOptionalString(formData, "plannedDate"),
+    lessonNumber: getOptionalInteger(formData, "lessonNumber") ?? 1,
+    durationLessons: getOptionalInteger(formData, "durationLessons") ?? 1,
+    status: isPlannedLessonStatus(rawStatus) ? rawStatus : "planned"
+  });
 
-  if (!planId || !title || !durationLessons) {
-    redirect(`/planejamento/${planId}?error=Preencha%20os%20campos%20obrigat%C3%B3rios%20da%20aula`);
-  }
-
-  if (methodology && !SIAGE_METHODOLOGIES.includes(methodology as (typeof SIAGE_METHODOLOGIES)[number])) {
-    redirect(`/planejamento/${planId}?error=Metodologia%20inv%C3%A1lida`);
-  }
-
-  const supabase = await createRlsClient();
-  const { data: lastLesson } = await supabase
-    .from("planned_lessons")
-    .select("position, lesson_number")
-    .eq("teaching_plan_id", planId)
-    .order("position", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const payload: Database["public"]["Tables"]["planned_lessons"]["Insert"] = {
-    teaching_plan_id: planId,
-    plan_unit_id: planUnitId || null,
-    title,
-    knowledge_objects: knowledgeObjects,
-    objectives,
-    methodology: methodology || null,
-    observations_template: observationsTemplate,
-    planned_date: plannedDate || null,
-    lesson_number: (lastLesson?.lesson_number ?? 0) + 1,
-    duration_lessons: durationLessons,
-    status: "planned",
-    position: (lastLesson?.position ?? 0) + 1
-  };
-
-  const { error } = await supabase.from("planned_lessons").insert(payload);
-
-  if (error) {
-    redirect(`/planejamento/${planId}?error=${encodeURIComponent(error.message)}`);
-  }
-
-  revalidatePath(`/planejamento/${planId}`);
-  redirect(`/planejamento/${planId}?notice=lesson-created`);
+  redirectToPlanResult(planId, result);
 }
 
-export async function updatePlannedLessonAction(
-  formData: FormData
-): Promise<ActionResult> {
-  const planId = getRequiredString(formData, "planId");
-  const lessonId = getRequiredString(formData, "lessonId");
-  const planUnitId = getOptionalString(formData, "planUnitId");
-  const title = getRequiredString(formData, "title");
-  const knowledgeObjects = getOptionalString(formData, "knowledgeObjects");
-  const objectives = getOptionalString(formData, "objectives");
-  const methodology = getOptionalString(formData, "methodology");
-  const observationsTemplate = getOptionalString(formData, "observationsTemplate");
-  const plannedDate = getOptionalString(formData, "plannedDate");
-  const lessonNumber = getPositiveNumber(formData, "lessonNumber");
-  const durationLessons = getPositiveNumber(formData, "durationLessons");
-  const status = getRequiredString(formData, "status");
+export async function deletePlannedLessonAction(formData: FormData) {
+  const planId = getString(formData, "planId");
+  const result = await deletePlannedLesson({
+    id: getString(formData, "lessonId"),
+    teachingPlanId: planId
+  });
 
-  if (!planId || !lessonId || !title || !lessonNumber || !durationLessons || !status) {
-    redirect(`/planejamento/${planId}?error=Dados%20inv%C3%A1lidos%20da%20aula`);
-  }
-
-  if (methodology && !SIAGE_METHODOLOGIES.includes(methodology as (typeof SIAGE_METHODOLOGIES)[number])) {
-    redirect(`/planejamento/${planId}?error=Metodologia%20inv%C3%A1lida`);
-  }
-
-  const payload: Database["public"]["Tables"]["planned_lessons"]["Update"] = {
-    plan_unit_id: planUnitId || null,
-    title,
-    knowledge_objects: knowledgeObjects,
-    objectives,
-    methodology: methodology || null,
-    observations_template: observationsTemplate,
-    planned_date: plannedDate || null,
-    lesson_number: lessonNumber,
-    duration_lessons: durationLessons,
-    status: status as Database["public"]["Tables"]["planned_lessons"]["Update"]["status"]
-  };
-
-  const supabase = await createRlsClient();
-  const { error } = await supabase
-    .from("planned_lessons")
-    .update(payload)
-    .eq("id", lessonId);
-
-  if (error) {
-    redirect(`/planejamento/${planId}?error=${encodeURIComponent(error.message)}`);
-  }
-
-  revalidatePath(`/planejamento/${planId}`);
-  redirect(`/planejamento/${planId}?notice=lesson-updated`);
+  redirectToPlanResult(planId, result);
 }
 
-export async function movePlannedLessonAction(
-  formData: FormData
-): Promise<ActionResult> {
-  const planId = getRequiredString(formData, "planId");
-  const lessonId = getRequiredString(formData, "lessonId");
-  const direction = getRequiredString(formData, "direction");
+export async function movePlanUnitAction(formData: FormData) {
+  const planId = getString(formData, "planId");
+  const unitId = getString(formData, "unitId");
+  const direction = getString(formData, "direction");
+  const detail = await getTeachingPlanById(planId);
 
-  if (!planId || !lessonId || !direction) {
-    redirect(`/planejamento/${planId}?error=Movimenta%C3%A7%C3%A3o%20inv%C3%A1lida`);
+  if (!detail.data) {
+    redirect(`/planejamento/${planId}?error=${encodeURIComponent(detail.error ?? "Planejamento não encontrado.")}`);
   }
 
-  const supabase = await createRlsClient();
-  const { data: lessons, error } = await supabase
-    .from("planned_lessons")
-    .select("id, position")
-    .eq("teaching_plan_id", planId)
-    .order("position", { ascending: true });
+  const reordered = moveId(
+    detail.data.units.map((unit) => unit.id),
+    unitId,
+    direction
+  );
 
-  if (error || !lessons) {
-    redirect(`/planejamento/${planId}?error=${encodeURIComponent(error?.message ?? "Não foi possível ordenar as aulas.")}`);
+  if (!reordered) {
+    redirect(`/planejamento/${planId}?error=${encodeURIComponent("Não foi possível reordenar a unidade.")}`);
   }
 
-  const currentIndex = lessons.findIndex((lesson) => lesson.id === lessonId);
-  const targetIndex =
-    direction === "up" ? currentIndex - 1 : currentIndex + 1;
+  const result = await reorderPlanUnits({
+    teachingPlanId: planId,
+    unitIdsInOrder: reordered
+  });
 
-  if (currentIndex < 0 || targetIndex < 0 || targetIndex >= lessons.length) {
-    redirect(`/planejamento/${planId}?notice=no-change`);
-  }
-
-  const currentLesson = lessons[currentIndex];
-  const targetLesson = lessons[targetIndex];
-
-  await supabase.from("planned_lessons").update({ position: -1 }).eq("id", currentLesson.id);
-  await supabase
-    .from("planned_lessons")
-    .update({ position: currentLesson.position })
-    .eq("id", targetLesson.id);
-  await supabase
-    .from("planned_lessons")
-    .update({ position: targetLesson.position })
-    .eq("id", currentLesson.id);
-
-  revalidatePath(`/planejamento/${planId}`);
-  redirect(`/planejamento/${planId}?notice=lesson-moved`);
+  redirectToPlanResult(planId, result);
 }
 
-export async function deletePlannedLessonAction(
-  formData: FormData
-): Promise<ActionResult> {
-  const planId = getRequiredString(formData, "planId");
-  const lessonId = getRequiredString(formData, "lessonId");
+export async function movePlannedLessonAction(formData: FormData) {
+  const planId = getString(formData, "planId");
+  const lessonId = getString(formData, "lessonId");
+  const direction = getString(formData, "direction");
+  const detail = await getTeachingPlanById(planId);
 
-  if (!planId || !lessonId) {
-    redirect(`/planejamento/${planId}?error=Aula%20inv%C3%A1lida`);
+  if (!detail.data) {
+    redirect(`/planejamento/${planId}?error=${encodeURIComponent(detail.error ?? "Planejamento não encontrado.")}`);
   }
 
-  const supabase = await createRlsClient();
-  const { error } = await supabase
-    .from("planned_lessons")
-    .delete()
-    .eq("id", lessonId);
+  const reordered = moveId(
+    detail.data.lessons.map((lesson) => lesson.id),
+    lessonId,
+    direction
+  );
 
-  if (error) {
-    redirect(`/planejamento/${planId}?error=${encodeURIComponent(error.message)}`);
+  if (!reordered) {
+    redirect(`/planejamento/${planId}?error=${encodeURIComponent("Não foi possível reordenar a aula.")}`);
   }
 
-  revalidatePath(`/planejamento/${planId}`);
-  redirect(`/planejamento/${planId}?notice=lesson-deleted`);
+  const result = await reorderPlannedLessons({
+    teachingPlanId: planId,
+    lessonIdsInOrder: reordered
+  });
+
+  redirectToPlanResult(planId, result);
 }
 
-function getRequiredString(formData: FormData, key: string) {
-  return String(formData.get(key) ?? "").trim();
+function redirectToPlanResult(
+  planId: string,
+  result: { success: boolean; message: string }
+) {
+  if (!result.success) {
+    redirect(`/planejamento/${planId}?error=${encodeURIComponent(result.message)}`);
+  }
+
+  redirect(`/planejamento/${planId}?notice=${encodeURIComponent(result.message)}`);
+}
+
+function moveId(ids: string[], targetId: string, direction: string) {
+  const currentIndex = ids.findIndex((id) => id === targetId);
+
+  if (currentIndex < 0) {
+    return null;
+  }
+
+  const nextIndex =
+    direction === "up"
+      ? currentIndex - 1
+      : direction === "down"
+        ? currentIndex + 1
+        : -1;
+
+  if (nextIndex < 0 || nextIndex >= ids.length) {
+    return null;
+  }
+
+  const reordered = [...ids];
+  [reordered[currentIndex], reordered[nextIndex]] = [
+    reordered[nextIndex],
+    reordered[currentIndex]
+  ];
+
+  return reordered;
+}
+
+function getString(formData: FormData, key: string) {
+  const value = formData.get(key);
+
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function getOptionalString(formData: FormData, key: string) {
-  const value = String(formData.get(key) ?? "").trim();
-
-  return value.length > 0 ? value : "";
+  const value = getString(formData, key);
+  return value.length > 0 ? value : null;
 }
 
-function getPositiveNumber(formData: FormData, key: string) {
-  const raw = Number(formData.get(key) ?? 0);
+function getOptionalNumber(formData: FormData, key: string) {
+  const value = getString(formData, key);
 
-  return Number.isInteger(raw) && raw > 0 ? raw : 0;
-}
-
-function buildParams(params: Record<string, string>) {
-  const searchParams = new URLSearchParams();
-
-  for (const [key, value] of Object.entries(params)) {
-    if (value.length > 0) {
-      searchParams.set(key, value);
-    }
+  if (!value) {
+    return null;
   }
 
-  return searchParams.toString();
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getOptionalInteger(formData: FormData, key: string) {
+  const value = getOptionalNumber(formData, key);
+  return value !== null && Number.isInteger(value) ? value : null;
 }

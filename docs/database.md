@@ -107,6 +107,62 @@
 - The editor `/planejamento/[planoId]` supports general data, units, and planned lessons
 - There is still no AI generation, no PDF import, and no SIAGE writeback in this phase
 
+## Planning data access layer
+
+The planning module now has a dedicated server-side data layer in `src/features/planejamento/`.
+
+### Folders
+
+- `actions/`: write operations implemented as Server Action helpers over Supabase with server-side validation
+- `queries/`: read operations for listing plans, loading a plan by id, and listing real teacher assignments
+- `types/`: strict TypeScript contracts for plans, units, lessons, filters, action results, and validation results
+- `schemas/`: validation schemas for create and update payloads before any write
+- `utils/`: payload builders, status rules, reorder helpers, and database error translation
+
+### Reads
+
+- `listTeachingPlans(filters)` loads existing plans and their assignment context
+- `getTeachingPlanById(id)` loads one plan with units and planned lessons in a single relational query
+- `listTeachingPlanAssignments()` loads the real SIAGE-backed `teacher_assignments` used by the planning module
+
+### Writes
+
+- `createTeachingPlan(input)`
+- `updateTeachingPlan(input)`
+- `archiveTeachingPlan(input)`
+- `createPlanUnit(input)`
+- `updatePlanUnit(input)`
+- `deletePlanUnit(input)`
+- `createPlannedLesson(input)`
+- `updatePlannedLesson(input)`
+- `deletePlannedLesson(input)`
+- `reorderPlanUnits(input)`
+- `reorderPlannedLessons(input)`
+
+These functions:
+
+- use the RLS-safe Supabase server client instead of any service-role key in the frontend
+- validate payloads before writing
+- return friendly messages in Portuguese
+- translate common database errors into UI-safe messages
+- revalidate the planning routes after successful mutations
+
+### Constraint handling in the app layer
+
+- only one active plan per `teacher_assignment` and semester is checked before activation
+- lesson numbers are validated as unique inside each planning record
+- lesson and unit ownership is validated before updates and deletions
+- unit reordering uses a two-step position swap to respect the unique constraint on `(teaching_plan_id, position)`
+
+### Compatibility layer
+
+- `src/features/planejamento/actions.ts`
+- `src/features/planejamento/data/queries.ts`
+- `src/features/planejamento/constants.ts`
+- `src/features/planejamento/types.ts`
+
+These files preserve the previous import paths used by the current pages while delegating all real logic to the new data layer.
+
 ## Temporary security model
 
 Current policies are still for development only.

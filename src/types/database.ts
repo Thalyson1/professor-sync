@@ -383,9 +383,9 @@ export type Database = {
           title: string;
           description: string | null;
           education_base: "technical" | "bncc";
-          workload_hours: number;
-          weekly_lessons: number;
-          semester: string;
+          workload_hours: number | null;
+          weekly_lessons: number | null;
+          semester: string | null;
           status: "draft" | "active" | "completed" | "archived";
           created_at: string;
           updated_at: string;
@@ -396,9 +396,9 @@ export type Database = {
           title: string;
           description?: string | null;
           education_base: "technical" | "bncc";
-          workload_hours: number;
-          weekly_lessons: number;
-          semester: string;
+          workload_hours?: number | null;
+          weekly_lessons?: number | null;
+          semester?: string | null;
           status?: "draft" | "active" | "completed" | "archived";
           created_at?: string;
           updated_at?: string;
@@ -409,9 +409,9 @@ export type Database = {
           title?: string;
           description?: string | null;
           education_base?: "technical" | "bncc";
-          workload_hours?: number;
-          weekly_lessons?: number;
-          semester?: string;
+          workload_hours?: number | null;
+          weekly_lessons?: number | null;
+          semester?: string | null;
           status?: "draft" | "active" | "completed" | "archived";
           created_at?: string;
           updated_at?: string;
