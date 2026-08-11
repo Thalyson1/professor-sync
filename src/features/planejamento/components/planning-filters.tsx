@@ -1,5 +1,6 @@
 import { EDUCATION_BASE_OPTIONS, TEACHING_PLAN_STATUS_OPTIONS } from "../constants";
-import type { PlanningAssignmentListItem } from "../types";
+
+import type { TeachingPlanListItem } from "../types";
 
 type PlanningFiltersProps = {
   current: {
@@ -9,15 +10,21 @@ type PlanningFiltersProps = {
     status: string;
     base: string;
   };
-  items: PlanningAssignmentListItem[];
+  items: TeachingPlanListItem[];
 };
 
 export function PlanningFilters({ current, items }: PlanningFiltersProps) {
-  const series = Array.from(new Set(items.map((item) => item.serie))).sort();
+  const series = Array.from(new Set(items.map((item) => item.assignment.grade))).sort();
   const disciplinas = Array.from(
-    new Set(items.map((item) => item.disciplinaNome))
+    new Set(items.map((item) => item.assignment.subjectName))
   ).sort((left, right) => left.localeCompare(right, "pt-BR"));
-  const semestres = Array.from(new Set(items.map((item) => item.semester))).sort();
+  const semestres = Array.from(
+    new Set(
+      items
+        .map((item) => item.semester ?? item.assignment.semester ?? "")
+        .filter((value) => value.length > 0)
+    )
+  ).sort();
 
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -54,7 +61,6 @@ export function PlanningFilters({ current, items }: PlanningFiltersProps) {
         defaultValue={current.status}
         options={[
           { label: "Todos", value: "" },
-          { label: "Sem planejamento", value: "missing" },
           ...TEACHING_PLAN_STATUS_OPTIONS.map((option) => ({
             label: option.label,
             value: option.value

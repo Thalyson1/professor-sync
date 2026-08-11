@@ -23,7 +23,12 @@ import {
   SIAGE_METHODOLOGIES,
   TEACHING_PLAN_STATUS_OPTIONS
 } from "@/features/planejamento/constants";
-import { getTeachingPlanDetail } from "@/features/planejamento/data/queries";
+import { getTeachingPlanById } from "@/features/planejamento/queries";
+import {
+  getEducationBaseLabel,
+  getPlannedLessonStatusLabel,
+  getTeachingPlanStatusLabel
+} from "@/features/planejamento/utils/status-rules";
 import { FormSubmitButton } from "@/features/turmas/components/form-submit-button";
 
 export const dynamic = "force-dynamic";
@@ -44,16 +49,16 @@ export default async function PlanoEditorPage({
 }: PlanoEditorPageProps) {
   const { planoId } = await params;
   const resolvedSearchParams = await searchParams;
-  const { data: plan, error, configured } = await getTeachingPlanDetail(planoId);
+  const { data: plan, error, configured } = await getTeachingPlanById(planoId);
 
   if (!plan) {
     if (error) {
       return (
         <PageSection
-          title={configured ? "Não foi possível carregar o plano" : "Supabase ainda não configurado"}
+          title={configured ? "Não foi possível carregar o planejamento" : "Supabase ainda não configurado"}
           description={error}
         >
-          <EmptyState title="Plano indisponível" description={error} />
+          <EmptyState title="Planejamento indisponível" description={error} />
         </PageSection>
       );
     }
@@ -64,52 +69,80 @@ export default async function PlanoEditorPage({
   return (
     <PageSection
       title={plan.title}
-      description="Edite informações gerais, crie unidades e monte as aulas previstas do planejamento semestral."
+      description="Edite as informações gerais, organize as unidades e mantenha as aulas planejadas com dados reais do banco."
     >
-      <div className="flex flex-wrap gap-3">
-        <Link
-          href="/planejamento"
-          className="inline-flex items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--card-strong)] px-4 py-3 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--primary)] hover:text-[var(--primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)]"
-        >
-          Voltar para planejamento
-        </Link>
-      </div>
-
       <ActionNotice
         status={resolvedSearchParams.notice}
         error={resolvedSearchParams.error}
       />
 
       <section className="rounded-3xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--primary)]">
-              {plan.assignment.serie} · {plan.assignment.semester}
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold text-[var(--foreground)]">
-              {plan.assignment.turmaNome} · {plan.assignment.disciplinaNome}
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="rounded-full bg-[var(--primary-soft)] px-3 py-1 text-xs font-semibold text-[var(--primary)]">
+                {getTeachingPlanStatusLabel(plan.status)}
+              </span>
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--primary)]">
+                {plan.assignment.grade}
+                {plan.assignment.letter ? ` ${plan.assignment.letter}` : ""}
+                {" · "}
+                {plan.semester ?? plan.assignment.semester ?? "Sem semestre"}
+              </span>
+            </div>
+
+            <h2 className="mt-3 text-2xl font-semibold text-[var(--foreground)]">
+              {plan.title}
             </h2>
+
             <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
-              Tipo de componente: {plan.assignment.componentType ?? "Não informado"}
+              {plan.assignment.subjectName} · {plan.assignment.className}
             </p>
           </div>
 
-          <form action={deleteTeachingPlanAction}>
-            <input type="hidden" name="planId" value={plan.id} />
-            <ConfirmSubmitButton
-              confirmMessage="Deseja excluir este planejamento? Todas as unidades e aulas serão removidas."
-              idleLabel="Excluir planejamento"
-              pendingLabel="Excluindo..."
-            />
-          </form>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/planejamento"
+              className="inline-flex items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--card-strong)] px-4 py-3 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--primary)] hover:text-[var(--primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)]"
+            >
+              Voltar
+            </Link>
+            <button
+              type="submit"
+              form="plan-general-form"
+              className="inline-flex items-center justify-center rounded-2xl border border-[var(--primary)] bg-[var(--primary)] px-4 py-3 text-sm font-medium text-white transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)]"
+            >
+              Salvar
+            </button>
+            <form action={deleteTeachingPlanAction}>
+              <input type="hidden" name="planId" value={plan.id} />
+              <ConfirmSubmitButton
+                confirmMessage="Deseja arquivar este planejamento? Ele continuará disponível apenas para consulta."
+                idleLabel="Arquivar"
+                pendingLabel="Arquivando..."
+              />
+            </form>
+          </div>
         </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <InfoItem label="Turma" value={plan.assignment.className} />
+        <InfoItem label="Disciplina" value={plan.assignment.subjectName} />
+        <InfoItem label="Base" value={getEducationBaseLabel(plan.educationBase)} />
+        <InfoItem label="Aulas planejadas" value={String(plan.lessons.length)} />
       </section>
 
       <section className="rounded-3xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-sm">
         <h2 className="text-xl font-semibold text-[var(--foreground)]">
           Informações gerais
         </h2>
-        <form action={updateTeachingPlanAction} className="mt-5 grid gap-4 lg:grid-cols-2">
+
+        <form
+          id="plan-general-form"
+          action={updateTeachingPlanAction}
+          className="mt-5 grid gap-4 lg:grid-cols-2"
+        >
           <input type="hidden" name="planId" value={plan.id} />
 
           <label className="flex flex-col gap-2">
@@ -186,18 +219,12 @@ export default async function PlanoEditorPage({
               className={textareaClassName}
             />
           </label>
-
-          <div className="lg:col-span-2">
-            <FormSubmitButton
-              idleLabel="Salvar informações gerais"
-              pendingLabel="Salvando..."
-            />
-          </div>
         </form>
       </section>
 
       <section className="rounded-3xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-sm">
         <h2 className="text-xl font-semibold text-[var(--foreground)]">Unidades</h2>
+
         <form action={createPlanUnitAction} className="mt-5 grid gap-4 lg:grid-cols-2">
           <input type="hidden" name="planId" value={plan.id} />
           <label className="flex flex-col gap-2">
@@ -225,7 +252,7 @@ export default async function PlanoEditorPage({
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-[var(--foreground)]">
-                    Unidade {unit.position}
+                    Unidade {unit.position + 1}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <form action={movePlanUnitAction}>
@@ -247,7 +274,10 @@ export default async function PlanoEditorPage({
                   </div>
                 </div>
 
-                <form action={updatePlanUnitAction} className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto]">
+                <form
+                  action={updatePlanUnitAction}
+                  className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto]"
+                >
                   <input type="hidden" name="planId" value={plan.id} />
                   <input type="hidden" name="unitId" value={unit.id} />
                   <div className="grid gap-4">
@@ -295,8 +325,21 @@ export default async function PlanoEditorPage({
 
       <section className="rounded-3xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-sm">
         <h2 className="text-xl font-semibold text-[var(--foreground)]">Aulas planejadas</h2>
+
         <form action={createPlannedLessonAction} className="mt-5 grid gap-4 xl:grid-cols-2">
           <input type="hidden" name="planId" value={plan.id} />
+
+          <label className="flex flex-col gap-2">
+            <span className="text-sm font-medium text-[var(--foreground)]">Número da aula</span>
+            <input
+              required
+              type="number"
+              min="1"
+              name="lessonNumber"
+              defaultValue={plan.lessons.length + 1}
+              className={inputClassName}
+            />
+          </label>
 
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium text-[var(--foreground)]">Título da aula</span>
@@ -309,7 +352,19 @@ export default async function PlanoEditorPage({
               <option value="">Sem unidade</option>
               {plan.units.map((unit) => (
                 <option key={unit.id} value={unit.id}>
-                  Unidade {unit.position} · {unit.title}
+                  Unidade {unit.position + 1} · {unit.title}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="flex flex-col gap-2">
+            <span className="text-sm font-medium text-[var(--foreground)]">Metodologia</span>
+            <select name="methodology" defaultValue="" className={inputClassName}>
+              <option value="">Selecione</option>
+              {SIAGE_METHODOLOGIES.map((methodology) => (
+                <option key={methodology} value={methodology}>
+                  {methodology}
                 </option>
               ))}
             </select>
@@ -326,25 +381,13 @@ export default async function PlanoEditorPage({
           </label>
 
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-[var(--foreground)]">Metodologia</span>
-            <select name="methodology" defaultValue="" className={inputClassName}>
-              <option value="">Selecione</option>
-              {SIAGE_METHODOLOGIES.map((methodology) => (
-                <option key={methodology} value={methodology}>
-                  {methodology}
-                </option>
-              ))}
-            </select>
+            <span className="text-sm font-medium text-[var(--foreground)]">Modelo de observação</span>
+            <textarea name="observationsTemplate" rows={3} className={textareaClassName} />
           </label>
 
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium text-[var(--foreground)]">Data prevista</span>
             <input type="date" name="plannedDate" className={inputClassName} />
-          </label>
-
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-[var(--foreground)]">Modelo de observações</span>
-            <textarea name="observationsTemplate" rows={3} className={textareaClassName} />
           </label>
 
           <label className="flex flex-col gap-2">
@@ -375,9 +418,14 @@ export default async function PlanoEditorPage({
                 className="rounded-2xl border border-[var(--border)] bg-[var(--card-strong)] p-4"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-[var(--foreground)]">
-                    Aula {lesson.lessonNumber}
-                  </p>
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--foreground)]">
+                      Aula {lesson.lessonNumber} · {lesson.title}
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      {getPlannedLessonStatusLabel(lesson.status)}
+                    </p>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     <form action={movePlannedLessonAction}>
                       <input type="hidden" name="planId" value={plan.id} />
@@ -398,9 +446,24 @@ export default async function PlanoEditorPage({
                   </div>
                 </div>
 
-                <form action={updatePlannedLessonAction} className="mt-4 grid gap-4 xl:grid-cols-2">
+                <form
+                  action={updatePlannedLessonAction}
+                  className="mt-4 grid gap-4 xl:grid-cols-2"
+                >
                   <input type="hidden" name="planId" value={plan.id} />
                   <input type="hidden" name="lessonId" value={lesson.id} />
+
+                  <label className="flex flex-col gap-2">
+                    <span className="text-sm font-medium text-[var(--foreground)]">Número da aula</span>
+                    <input
+                      required
+                      type="number"
+                      min="1"
+                      name="lessonNumber"
+                      defaultValue={lesson.lessonNumber}
+                      className={inputClassName}
+                    />
+                  </label>
 
                   <label className="flex flex-col gap-2">
                     <span className="text-sm font-medium text-[var(--foreground)]">Título</span>
@@ -409,11 +472,31 @@ export default async function PlanoEditorPage({
 
                   <label className="flex flex-col gap-2">
                     <span className="text-sm font-medium text-[var(--foreground)]">Unidade</span>
-                    <select name="planUnitId" defaultValue={lesson.planUnitId ?? ""} className={inputClassName}>
+                    <select
+                      name="planUnitId"
+                      defaultValue={lesson.planUnitId ?? ""}
+                      className={inputClassName}
+                    >
                       <option value="">Sem unidade</option>
                       {plan.units.map((unit) => (
                         <option key={unit.id} value={unit.id}>
-                          Unidade {unit.position} · {unit.title}
+                          Unidade {unit.position + 1} · {unit.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="flex flex-col gap-2">
+                    <span className="text-sm font-medium text-[var(--foreground)]">Metodologia</span>
+                    <select
+                      name="methodology"
+                      defaultValue={lesson.methodology ?? ""}
+                      className={inputClassName}
+                    >
+                      <option value="">Selecione</option>
+                      {SIAGE_METHODOLOGIES.map((methodology) => (
+                        <option key={methodology} value={methodology}>
+                          {methodology}
                         </option>
                       ))}
                     </select>
@@ -440,23 +523,7 @@ export default async function PlanoEditorPage({
                   </label>
 
                   <label className="flex flex-col gap-2">
-                    <span className="text-sm font-medium text-[var(--foreground)]">Metodologia</span>
-                    <select
-                      name="methodology"
-                      defaultValue={lesson.methodology ?? ""}
-                      className={inputClassName}
-                    >
-                      <option value="">Selecione</option>
-                      {SIAGE_METHODOLOGIES.map((methodology) => (
-                        <option key={methodology} value={methodology}>
-                          {methodology}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="flex flex-col gap-2">
-                    <span className="text-sm font-medium text-[var(--foreground)]">Modelo de observações</span>
+                    <span className="text-sm font-medium text-[var(--foreground)]">Modelo de observação</span>
                     <textarea
                       name="observationsTemplate"
                       rows={3}
@@ -471,18 +538,6 @@ export default async function PlanoEditorPage({
                       type="date"
                       name="plannedDate"
                       defaultValue={lesson.plannedDate ?? ""}
-                      className={inputClassName}
-                    />
-                  </label>
-
-                  <label className="flex flex-col gap-2">
-                    <span className="text-sm font-medium text-[var(--foreground)]">Número da aula</span>
-                    <input
-                      required
-                      type="number"
-                      min="1"
-                      name="lessonNumber"
-                      defaultValue={lesson.lessonNumber}
                       className={inputClassName}
                     />
                   </label>
@@ -543,6 +598,17 @@ export default async function PlanoEditorPage({
         )}
       </section>
     </PageSection>
+  );
+}
+
+function InfoItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] px-4 py-3 shadow-sm">
+      <p className="text-xs font-medium uppercase tracking-[0.16em] text-[var(--muted-soft)]">
+        {label}
+      </p>
+      <p className="mt-2 text-sm text-[var(--foreground)]">{value}</p>
+    </div>
   );
 }
 
