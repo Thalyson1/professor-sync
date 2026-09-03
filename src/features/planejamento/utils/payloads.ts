@@ -1,9 +1,12 @@
 import type { Database } from "@/types/database";
 
 import type {
+  CompletePlannedLessonInput,
   CreatePlannedLessonInput,
   CreatePlanUnitInput,
   CreateTeachingPlanInput,
+  PostponePlannedLessonInput,
+  UpdatePlannedLessonDateInput,
   UpdatePlannedLessonInput,
   UpdatePlanUnitInput,
   UpdateTeachingPlanInput
@@ -93,6 +96,48 @@ export function buildPlannedLessonUpdatePayload(
     lesson_number: input.lessonNumber,
     duration_lessons: input.durationLessons,
     status: input.status
+  };
+}
+
+export function buildPlannedLessonDateUpdatePayload(
+  input: UpdatePlannedLessonDateInput
+): Database["public"]["Tables"]["planned_lessons"]["Update"] {
+  return {
+    planned_date: normalizeNullableText(input.plannedDate)
+  };
+}
+
+export function buildCompletedLessonPayload(
+  input: CompletePlannedLessonInput,
+  executionNotes: string
+): Database["public"]["Tables"]["planned_lessons"]["Update"] {
+  return {
+    status: "completed",
+    actual_date: input.actualDate,
+    completed_at: new Date().toISOString(),
+    execution_notes: executionNotes
+  };
+}
+
+export function buildPostponedLessonPayload(
+  previousPlannedDate: string | null,
+  input: PostponePlannedLessonInput,
+  executionNotes: string | null
+): Database["public"]["Tables"]["planned_lessons"]["Update"] {
+  return {
+    status: "postponed",
+    planned_date: input.plannedDate,
+    postponed_from: previousPlannedDate,
+    execution_notes: executionNotes
+  };
+}
+
+export function buildCancelledLessonPayload(
+  note: string | null
+): Database["public"]["Tables"]["planned_lessons"]["Update"] {
+  return {
+    status: "cancelled",
+    execution_notes: normalizeNullableText(note)
   };
 }
 

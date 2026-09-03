@@ -7,9 +7,14 @@ import {
 import { failure, success } from "../utils/validators";
 
 import type {
+  AutoDistributeLessonsInput,
+  CancelPlannedLessonInput,
+  CompletePlannedLessonInput,
   CreatePlannedLessonInput,
   CreatePlanUnitInput,
   CreateTeachingPlanInput,
+  PostponePlannedLessonInput,
+  UpdatePlannedLessonDateInput,
   UpdateTeachingPlanInput,
   ValidationResult
 } from "../types";
@@ -221,6 +226,218 @@ export const createPlannedLessonSchema: Schema<CreatePlannedLessonInput> = {
   }
 };
 
+export const updatePlannedLessonDateSchema: Schema<UpdatePlannedLessonDateInput> = {
+  safeParse(input) {
+    if (!isRecord(input)) {
+      return failure("Dados invÃ¡lidos para atualizar a data da aula.");
+    }
+
+    const id = getString(input.id);
+    const teachingPlanId = getString(input.teachingPlanId);
+    const plannedDate = getNullableDateString(input.plannedDate);
+    const errors: string[] = [];
+
+    if (!id) {
+      errors.push("Informe a aula que serÃ¡ atualizada.");
+    }
+
+    if (!teachingPlanId) {
+      errors.push("Informe o planejamento da aula.");
+    }
+
+    if (plannedDate === "__invalid_date__") {
+      errors.push("Informe uma data prevista vÃ¡lida.");
+    }
+
+    if (errors.length > 0) {
+      return failure(...errors);
+    }
+
+    return success({
+      id,
+      teachingPlanId,
+      plannedDate: plannedDate === "__invalid_date__" ? null : plannedDate
+    });
+  }
+};
+
+export const autoDistributeLessonsSchema: Schema<AutoDistributeLessonsInput> = {
+  safeParse(input) {
+    if (!isRecord(input)) {
+      return failure("Dados invÃ¡lidos para distribuir as aulas.");
+    }
+
+    const teachingPlanId = getString(input.teachingPlanId);
+    const startDate = getString(input.startDate);
+    const weekDays = getWeekDays(input.weekDays);
+    const lessonsPerMeeting = getPositiveInteger(input.lessonsPerMeeting);
+    const endDate = getNullableDateString(input.endDate);
+    const overwriteScheduledDates = Boolean(input.overwriteScheduledDates);
+    const errors: string[] = [];
+
+    if (!teachingPlanId) {
+      errors.push("Informe o planejamento do cronograma.");
+    }
+
+    if (getNullableDateString(startDate) === "__invalid_date__" || !startDate) {
+      errors.push("Informe uma data inicial vÃ¡lida.");
+    }
+
+    if (weekDays.length === 0) {
+      errors.push("Selecione pelo menos um dia da semana.");
+    }
+
+    if (!lessonsPerMeeting) {
+      errors.push("Informe uma quantidade vÃ¡lida de tempos por encontro.");
+    }
+
+    if (endDate === "__invalid_date__") {
+      errors.push("Informe uma data final vÃ¡lida.");
+    }
+
+    if (errors.length > 0) {
+      return failure(...errors);
+    }
+
+    return success({
+      teachingPlanId,
+      startDate,
+      weekDays,
+      lessonsPerMeeting,
+      endDate: endDate === "__invalid_date__" ? null : endDate,
+      overwriteScheduledDates
+    });
+  }
+};
+
+export const completePlannedLessonSchema: Schema<CompletePlannedLessonInput> = {
+  safeParse(input) {
+    if (!isRecord(input)) {
+      return failure("Dados invÃ¡lidos para marcar a aula como realizada.");
+    }
+
+    const id = getString(input.id);
+    const teachingPlanId = getString(input.teachingPlanId);
+    const actualDate = getString(input.actualDate);
+    const followedPlan = Boolean(input.followedPlan);
+    const note = getNullableString(input.note);
+    const actualKnowledgeObjects = getNullableString(input.actualKnowledgeObjects);
+    const actualObjectives = getNullableString(input.actualObjectives);
+    const actualMethodology = getNullableString(input.actualMethodology);
+    const actualObservations = getNullableString(input.actualObservations);
+    const errors: string[] = [];
+
+    if (!id) {
+      errors.push("Informe a aula que serÃ¡ marcada como realizada.");
+    }
+
+    if (!teachingPlanId) {
+      errors.push("Informe o planejamento da aula.");
+    }
+
+    if (getNullableDateString(actualDate) === "__invalid_date__" || !actualDate) {
+      errors.push("Informe a data real da aula.");
+    }
+
+    if (
+      actualMethodology &&
+      !SIAGE_METHODOLOGIES.includes(
+        actualMethodology as (typeof SIAGE_METHODOLOGIES)[number]
+      )
+    ) {
+      errors.push("Selecione uma metodologia de execuÃ§Ã£o compatÃ­vel com o SIAGE.");
+    }
+
+    if (
+      !followedPlan &&
+      !actualKnowledgeObjects &&
+      !actualObjectives &&
+      !actualMethodology &&
+      !actualObservations &&
+      !note
+    ) {
+      errors.push(
+        "Ao informar conteÃºdo diferente, registre ao menos uma alteraÃ§Ã£o ou observaÃ§Ã£o da execuÃ§Ã£o."
+      );
+    }
+
+    if (errors.length > 0) {
+      return failure(...errors);
+    }
+
+    return success({
+      id,
+      teachingPlanId,
+      actualDate,
+      followedPlan,
+      note,
+      actualKnowledgeObjects,
+      actualObjectives,
+      actualMethodology,
+      actualObservations
+    });
+  }
+};
+
+export const postponePlannedLessonSchema: Schema<PostponePlannedLessonInput> = {
+  safeParse(input) {
+    if (!isRecord(input)) {
+      return failure("Dados invÃ¡lidos para adiar a aula.");
+    }
+
+    const id = getString(input.id);
+    const teachingPlanId = getString(input.teachingPlanId);
+    const plannedDate = getString(input.plannedDate);
+    const note = getNullableString(input.note);
+    const errors: string[] = [];
+
+    if (!id) {
+      errors.push("Informe a aula que serÃ¡ adiada.");
+    }
+
+    if (!teachingPlanId) {
+      errors.push("Informe o planejamento da aula.");
+    }
+
+    if (getNullableDateString(plannedDate) === "__invalid_date__" || !plannedDate) {
+      errors.push("Informe a nova data prevista da aula.");
+    }
+
+    if (errors.length > 0) {
+      return failure(...errors);
+    }
+
+    return success({
+      id,
+      teachingPlanId,
+      plannedDate,
+      note
+    });
+  }
+};
+
+export const cancelPlannedLessonSchema: Schema<CancelPlannedLessonInput> = {
+  safeParse(input) {
+    if (!isRecord(input)) {
+      return failure("Dados invÃ¡lidos para cancelar a aula.");
+    }
+
+    const id = getString(input.id);
+    const teachingPlanId = getString(input.teachingPlanId);
+    const note = getNullableString(input.note);
+
+    if (!id || !teachingPlanId) {
+      return failure("Informe corretamente a aula que serÃ¡ cancelada.");
+    }
+
+    return success({
+      id,
+      teachingPlanId,
+      note
+    });
+  }
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -269,4 +486,12 @@ function getNullableDateString(value: unknown) {
   const date = new Date(`${normalized}T12:00:00`);
 
   return Number.isNaN(date.getTime()) ? "__invalid_date__" : normalized;
+}
+
+function getWeekDays(value: unknown) {
+  const rawValues = Array.isArray(value) ? value : [value];
+
+  return rawValues
+    .map((item) => Number(item))
+    .filter((item) => Number.isInteger(item) && item >= 0 && item <= 6);
 }

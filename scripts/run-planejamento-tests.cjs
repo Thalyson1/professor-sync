@@ -53,6 +53,22 @@ const { parseAiPlanningDraft } = require(path.join(
   projectRoot,
   "src/features/planejamento/ai/parser.ts"
 ));
+const {
+  deriveLessonExecutionRecord,
+  parseLessonExecutionSnapshot,
+  serializeLessonExecutionSnapshot
+} = require(path.join(
+  projectRoot,
+  "src/features/planejamento/utils/execution.ts"
+));
+const {
+  buildAutomaticLessonDistribution,
+  getLessonVisualStatus,
+  sortLessonsChronologically
+} = require(path.join(
+  projectRoot,
+  "src/features/planejamento/utils/schedule.ts"
+));
 
 const tests = [
   {
@@ -291,6 +307,293 @@ const tests = [
       });
 
       assert.equal(result.success, false);
+    }
+  },
+  {
+    name: "buildAutomaticLessonDistribution distributes lessons chronologically with shared dates",
+    run() {
+      const result = buildAutomaticLessonDistribution(
+        [
+          {
+            id: "lesson-1",
+            lessonNumber: 1,
+            durationLessons: 1,
+            plannedDate: null,
+            position: 0,
+            status: "planned"
+          },
+          {
+            id: "lesson-2",
+            lessonNumber: 2,
+            durationLessons: 1,
+            plannedDate: null,
+            position: 1,
+            status: "planned"
+          },
+          {
+            id: "lesson-3",
+            lessonNumber: 3,
+            durationLessons: 2,
+            plannedDate: null,
+            position: 2,
+            status: "planned"
+          }
+        ],
+        {
+          teachingPlanId: "plan-1",
+          startDate: "2026-08-11",
+          weekDays: [2, 4],
+          lessonsPerMeeting: 2,
+          endDate: null,
+          overwriteScheduledDates: false
+        }
+      );
+
+      assert.equal(result.success, true);
+
+      if (result.success) {
+        assert.deepEqual(result.updates, [
+          { lessonId: "lesson-1", plannedDate: "2026-08-11" },
+          { lessonId: "lesson-2", plannedDate: "2026-08-11" },
+          { lessonId: "lesson-3", plannedDate: "2026-08-13" }
+        ]);
+      }
+    }
+  },
+  {
+    name: "buildAutomaticLessonDistribution skips completed lessons and preserves scheduled ones without overwrite",
+    run() {
+      const result = buildAutomaticLessonDistribution(
+        [
+          {
+            id: "lesson-1",
+            lessonNumber: 1,
+            durationLessons: 1,
+            plannedDate: "2026-08-11",
+            position: 0,
+            status: "planned"
+          },
+          {
+            id: "lesson-2",
+            lessonNumber: 2,
+            durationLessons: 1,
+            plannedDate: null,
+            position: 1,
+            status: "completed"
+          },
+          {
+            id: "lesson-3",
+            lessonNumber: 3,
+            durationLessons: 1,
+            plannedDate: null,
+            position: 2,
+            status: "planned"
+          }
+        ],
+        {
+          teachingPlanId: "plan-1",
+          startDate: "2026-08-12",
+          weekDays: [3],
+          lessonsPerMeeting: 1,
+          endDate: null,
+          overwriteScheduledDates: false
+        }
+      );
+
+      assert.equal(result.success, true);
+
+      if (result.success) {
+        assert.deepEqual(result.updates, [
+          { lessonId: "lesson-3", plannedDate: "2026-08-12" }
+        ]);
+        assert.deepEqual(result.skippedLessonIds, ["lesson-1"]);
+      }
+    }
+  },
+  {
+    name: "sortLessonsChronologically prioritizes date then position then lesson number",
+    run() {
+      const result = sortLessonsChronologically([
+        {
+          id: "lesson-3",
+          teachingPlanId: "plan-1",
+          planUnitId: null,
+          title: "Aula 3",
+          knowledgeObjects: null,
+          objectives: null,
+          methodology: null,
+          observationsTemplate: null,
+          plannedDate: null,
+          actualDate: null,
+          lessonNumber: 3,
+          durationLessons: 1,
+          status: "planned",
+          position: 2,
+          completedAt: null,
+          postponedFrom: null,
+          executionNotes: null,
+          createdAt: "",
+          updatedAt: ""
+        },
+        {
+          id: "lesson-2",
+          teachingPlanId: "plan-1",
+          planUnitId: null,
+          title: "Aula 2",
+          knowledgeObjects: null,
+          objectives: null,
+          methodology: null,
+          observationsTemplate: null,
+          plannedDate: "2026-08-12",
+          actualDate: null,
+          lessonNumber: 2,
+          durationLessons: 1,
+          status: "planned",
+          position: 1,
+          completedAt: null,
+          postponedFrom: null,
+          executionNotes: null,
+          createdAt: "",
+          updatedAt: ""
+        },
+        {
+          id: "lesson-1",
+          teachingPlanId: "plan-1",
+          planUnitId: null,
+          title: "Aula 1",
+          knowledgeObjects: null,
+          objectives: null,
+          methodology: null,
+          observationsTemplate: null,
+          plannedDate: "2026-08-12",
+          actualDate: null,
+          lessonNumber: 1,
+          durationLessons: 1,
+          status: "planned",
+          position: 0,
+          completedAt: null,
+          postponedFrom: null,
+          executionNotes: null,
+          createdAt: "",
+          updatedAt: ""
+        }
+      ]);
+
+      assert.deepEqual(
+        result.map((lesson) => lesson.id),
+        ["lesson-1", "lesson-2", "lesson-3"]
+      );
+    }
+  },
+  {
+    name: "serialize and parse execution snapshot preserve content differences",
+    run() {
+      const serialized = serializeLessonExecutionSnapshot({
+        followedPlan: false,
+        note: "A turma precisou de retomada",
+        actualKnowledgeObjects: "Revisão de algoritmos",
+        actualObjectives: "Retomar estruturas condicionais",
+        actualMethodology: "Aula dialogada",
+        actualObservations: "Participação parcial"
+      });
+      const parsed = parseLessonExecutionSnapshot(serialized);
+
+      assert.equal(parsed.followedPlan, false);
+      assert.equal(parsed.actualKnowledgeObjects, "Revisão de algoritmos");
+      assert.equal(parsed.actualMethodology, "Aula dialogada");
+    }
+  },
+  {
+    name: "deriveLessonExecutionRecord preserves original planning and applies real execution override",
+    run() {
+      const executionNotes = serializeLessonExecutionSnapshot({
+        followedPlan: false,
+        note: "Mudança de conteúdo por revisão",
+        actualKnowledgeObjects: "Revisão de lógica",
+        actualObjectives: "Corrigir lacunas da turma",
+        actualMethodology: "Aula prática",
+        actualObservations: "Retomada antes do conteúdo novo"
+      });
+
+      const result = deriveLessonExecutionRecord({
+        id: "lesson-1",
+        teachingPlanId: "plan-1",
+        planUnitId: null,
+        title: "Introdução",
+        knowledgeObjects: "Conteúdo original",
+        objectives: "Objetivo original",
+        methodology: "Aula dialogada",
+        observationsTemplate: "Observação original",
+        plannedDate: "2026-08-11",
+        actualDate: "2026-08-12",
+        lessonNumber: 1,
+        durationLessons: 1,
+        status: "completed",
+        position: 0,
+        completedAt: "2026-08-12T10:00:00.000Z",
+        postponedFrom: null,
+        executionNotes,
+        createdAt: "",
+        updatedAt: ""
+      });
+
+      assert.equal(result.knowledgeObjects, "Revisão de lógica");
+      assert.equal(result.methodology, "Aula prática");
+      assert.equal(result.plannedDate, "2026-08-11");
+      assert.equal(result.actualDate, "2026-08-12");
+    }
+  },
+  {
+    name: "getLessonVisualStatus reflects cronograma states including sem data",
+    run() {
+      assert.equal(
+        getLessonVisualStatus({
+          id: "lesson-1",
+          teachingPlanId: "plan-1",
+          planUnitId: null,
+          title: "Sem data",
+          knowledgeObjects: null,
+          objectives: null,
+          methodology: null,
+          observationsTemplate: null,
+          plannedDate: null,
+          actualDate: null,
+          lessonNumber: 1,
+          durationLessons: 1,
+          status: "planned",
+          position: 0,
+          completedAt: null,
+          postponedFrom: null,
+          executionNotes: null,
+          createdAt: "",
+          updatedAt: ""
+        }),
+        "Sem data"
+      );
+      assert.equal(
+        getLessonVisualStatus({
+          id: "lesson-2",
+          teachingPlanId: "plan-1",
+          planUnitId: null,
+          title: "Realizada",
+          knowledgeObjects: null,
+          objectives: null,
+          methodology: null,
+          observationsTemplate: null,
+          plannedDate: "2026-08-11",
+          actualDate: "2026-08-11",
+          lessonNumber: 2,
+          durationLessons: 1,
+          status: "completed",
+          position: 1,
+          completedAt: "2026-08-11T10:00:00.000Z",
+          postponedFrom: null,
+          executionNotes: null,
+          createdAt: "",
+          updatedAt: ""
+        }),
+        "Realizada"
+      );
     }
   }
 ];

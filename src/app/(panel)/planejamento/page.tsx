@@ -82,10 +82,16 @@ export default async function PlanejamentoPage({
           <Link
             href="/planejamento/novo"
             className="inline-flex items-center justify-center rounded-2xl border border-[var(--primary)] bg-[var(--primary)] px-4 py-3 text-sm font-medium text-white transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)]"
-          >
-            Criar planejamento
-          </Link>
-        </div>
+            >
+              Criar planejamento
+            </Link>
+            <Link
+              href="/planejamento/hoje"
+              className="inline-flex items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--card-strong)] px-4 py-3 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--primary)] hover:text-[var(--primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)]"
+            >
+              Hoje
+            </Link>
+          </div>
 
         <form method="get" className="mt-6 space-y-4">
           <PlanningFilters current={filters} items={plans} />

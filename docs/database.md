@@ -57,6 +57,7 @@
 - A lesson may optionally belong to a `plan_unit`
 - Supports SIAGE-compatible methodologies
 - Supports `status` as `planned`, `completed`, `postponed`, or `cancelled`
+- Also stores `actual_date`, `completed_at`, `postponed_from`, and `execution_notes` for cronograma and future lesson register derivation
 
 ### `students`
 
@@ -105,7 +106,8 @@
 - The listing page `/planejamento` works over the 13 real assignment rows
 - The creation flow `/planejamento/novo?atribuicao={id}` creates draft plans only
 - The editor `/planejamento/[planoId]` supports general data, units, and planned lessons
-- There is still no AI generation, no PDF import, and no SIAGE writeback in this phase
+- The cronograma `/planejamento/[planoId]/cronograma` now turns planned lessons into a temporal execution flow
+- The quick view `/planejamento/hoje` now lists lessons scheduled for the current date
 
 ## Planning data access layer
 
@@ -138,6 +140,11 @@ The planning module now has a dedicated server-side data layer in `src/features/
 - `deletePlannedLesson(input)`
 - `reorderPlanUnits(input)`
 - `reorderPlannedLessons(input)`
+- `updatePlannedLessonDate(input)`
+- `autoDistributePlannedLessons(input)`
+- `completePlannedLesson(input)`
+- `postponePlannedLesson(input)`
+- `cancelPlannedLesson(input)`
 - `generateTeachingPlanWithAiAction(previousState, formData)`
 - `applyGeneratedTeachingPlanAction(formData)`
 
@@ -156,6 +163,9 @@ These functions:
 - lesson and unit ownership is validated before updates and deletions
 - unit reordering uses a two-step position swap to respect the unique constraint on `(teaching_plan_id, position)`
 - lesson reordering also uses a two-step position swap to respect the unique constraint on `(teaching_plan_id, position)`
+- completed lessons are never redistributed automatically
+- automatic distribution only overwrites existing dates when the teacher confirms this explicitly
+- real execution data is stored separately from the planned lesson fields, preserving the original planning
 
 ### Compatibility layer
 
@@ -213,6 +223,42 @@ The planning module now also has an isolated AI generation layer in `src/feature
 - `generalObjectives`, `methodologies`, and `assessmentStrategies` from the AI draft are currently persisted by composing them into `teaching_plans.description`
 - Dedicated database columns for those fields may be added in a future migration if the product requires first-class filtering or reporting over them
 
+## Scheduling and execution layer
+
+The cronograma uses `planned_lessons` as the base entity for temporal organization and execution.
+
+### Planned versus executed lesson
+
+- Planned fields remain the source of truth for the original lesson proposal
+- `status` acts as the current execution state for cronograma: `planned`, `completed`, `postponed`, or `cancelled`
+- `actual_date` stores when the lesson really happened
+- `postponed_from` stores the date before the last postponement
+- `completed_at` stores the UTC timestamp when the lesson was marked as completed
+- `execution_notes` stores the execution snapshot used to preserve differences between planned and executed content
+
+### Execution snapshot
+
+The app layer serializes execution details in `execution_notes` to preserve:
+
+- whether the teacher followed the original planning
+- execution note
+- actual knowledge objects
+- actual objectives
+- actual methodology
+- actual execution observations
+
+This keeps the original planning intact while preparing the future lesson register and SIAGE write flow.
+
+### Automatic distribution rules
+
+- lessons are distributed in planning order
+- the algorithm uses selected weekdays and `lessonsPerMeeting` as date capacity
+- `duration_lessons` consumes the capacity of each meeting
+- multiple lessons may share the same date when the meeting still has remaining capacity
+- completed lessons are skipped
+- lessons with existing dates are only overwritten when explicitly confirmed
+- if a lesson requires more class periods than the meeting capacity, the action fails with a friendly message
+
 ## Temporary security model
 
 Current policies are still for development only.
@@ -240,3 +286,4 @@ This is intentionally temporary and must change before production.
 - AI-assisted planning currently generates drafts only and never writes to SIAGE
 - There are still no attendance, lesson register, or assessment tables connected to this planning flow
 - Ordering is currently done with explicit `position` swaps, not drag and drop
+- `execution_notes` currently stores a structured text payload instead of dedicated execution columns for each realized field

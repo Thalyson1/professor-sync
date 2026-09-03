@@ -7,14 +7,19 @@ import { parseAiPlanningDraft } from "./ai/parser";
 import { createRlsClient } from "@/lib/supabase/server";
 import { getTeachingPlanById } from "./queries";
 import {
+  autoDistributePlannedLessons,
+  cancelPlannedLesson,
   archiveTeachingPlan,
+  completePlannedLesson,
   createPlannedLesson,
   createPlanUnit,
   createTeachingPlan,
   deletePlannedLesson,
   deletePlanUnit,
+  postponePlannedLesson,
   reorderPlannedLessons,
   reorderPlanUnits,
+  updatePlannedLessonDate,
   updatePlannedLesson,
   updatePlanUnit,
   updateTeachingPlan
@@ -324,6 +329,76 @@ export async function movePlannedLessonAction(formData: FormData) {
   redirectToPlanResult(planId, result);
 }
 
+export async function updatePlannedLessonDateAction(formData: FormData) {
+  const planId = getString(formData, "planId");
+  const redirectTo = getRedirectTo(formData, `/planejamento/${planId}/cronograma`);
+  const result = await updatePlannedLessonDate({
+    id: getString(formData, "lessonId"),
+    teachingPlanId: planId,
+    plannedDate: getOptionalString(formData, "plannedDate")
+  });
+
+  redirectToRouteResult(redirectTo, result);
+}
+
+export async function autoDistributeLessonsAction(formData: FormData) {
+  const planId = getString(formData, "planId");
+  const redirectTo = getRedirectTo(formData, `/planejamento/${planId}/cronograma`);
+  const result = await autoDistributePlannedLessons({
+    teachingPlanId: planId,
+    startDate: getString(formData, "startDate"),
+    weekDays: getIntegerList(formData, "weekDays"),
+    lessonsPerMeeting: getOptionalInteger(formData, "lessonsPerMeeting") ?? 0,
+    endDate: getOptionalString(formData, "endDate"),
+    overwriteScheduledDates: getBoolean(formData, "overwriteScheduledDates")
+  });
+
+  redirectToRouteResult(redirectTo, result);
+}
+
+export async function completePlannedLessonAction(formData: FormData) {
+  const planId = getString(formData, "planId");
+  const redirectTo = getRedirectTo(formData, `/planejamento/${planId}/cronograma`);
+  const result = await completePlannedLesson({
+    id: getString(formData, "lessonId"),
+    teachingPlanId: planId,
+    actualDate: getString(formData, "actualDate"),
+    followedPlan: getString(formData, "executionMode") !== "different",
+    note: getOptionalString(formData, "executionNote"),
+    actualKnowledgeObjects: getOptionalString(formData, "actualKnowledgeObjects"),
+    actualObjectives: getOptionalString(formData, "actualObjectives"),
+    actualMethodology: getOptionalString(formData, "actualMethodology"),
+    actualObservations: getOptionalString(formData, "actualObservations")
+  });
+
+  redirectToRouteResult(redirectTo, result);
+}
+
+export async function postponePlannedLessonAction(formData: FormData) {
+  const planId = getString(formData, "planId");
+  const redirectTo = getRedirectTo(formData, `/planejamento/${planId}/cronograma`);
+  const result = await postponePlannedLesson({
+    id: getString(formData, "lessonId"),
+    teachingPlanId: planId,
+    plannedDate: getString(formData, "plannedDate"),
+    note: getOptionalString(formData, "executionNote")
+  });
+
+  redirectToRouteResult(redirectTo, result);
+}
+
+export async function cancelPlannedLessonAction(formData: FormData) {
+  const planId = getString(formData, "planId");
+  const redirectTo = getRedirectTo(formData, `/planejamento/${planId}/cronograma`);
+  const result = await cancelPlannedLesson({
+    id: getString(formData, "lessonId"),
+    teachingPlanId: planId,
+    note: getOptionalString(formData, "executionNote")
+  });
+
+  redirectToRouteResult(redirectTo, result);
+}
+
 function redirectToPlanResult(
   planId: string,
   result: { success: boolean; message: string }
@@ -333,6 +408,17 @@ function redirectToPlanResult(
   }
 
   redirect(`/planejamento/${planId}?notice=${encodeURIComponent(result.message)}`);
+}
+
+function redirectToRouteResult(
+  route: string,
+  result: { success: boolean; message: string }
+) {
+  if (!result.success) {
+    redirect(`${route}?error=${encodeURIComponent(result.message)}`);
+  }
+
+  redirect(`${route}?notice=${encodeURIComponent(result.message)}`);
 }
 
 function moveId(ids: string[], targetId: string, direction: string) {
@@ -389,6 +475,19 @@ function getOptionalInteger(formData: FormData, key: string) {
   return value !== null && Number.isInteger(value) ? value : null;
 }
 
+function getIntegerList(formData: FormData, key: string) {
+  return formData
+    .getAll(key)
+    .map((value) => (typeof value === "string" ? Number(value) : NaN))
+    .filter((value) => Number.isInteger(value));
+}
+
+function getBoolean(formData: FormData, key: string) {
+  const value = formData.get(key);
+
+  return value === "on" || value === "true" || value === "1";
+}
+
 function getLines(formData: FormData, key: string) {
   return getString(formData, key)
     .split(/\r?\n/)
@@ -404,6 +503,11 @@ function getOptionalStatus(formData: FormData, key: string) {
   }
 
   return undefined;
+}
+
+function getRedirectTo(formData: FormData, fallback: string) {
+  const value = getString(formData, "redirectTo");
+  return value || fallback;
 }
 
 function buildPersistedPlanDescription(

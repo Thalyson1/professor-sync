@@ -110,10 +110,16 @@ export default async function PlanoEditorPage({
             <Link
               href={`/planejamento/${plan.id}/ia`}
               className="inline-flex items-center justify-center rounded-2xl border border-[var(--primary)] bg-[var(--primary)] px-4 py-3 text-sm font-medium text-white transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)]"
-            >
-              Gerar com IA
-            </Link>
-            <button
+              >
+                Gerar com IA
+              </Link>
+              <Link
+                href={`/planejamento/${plan.id}/cronograma`}
+                className="inline-flex items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--card-strong)] px-4 py-3 text-sm font-medium text-[var(--foreground)] transition hover:border-[var(--primary)] hover:text-[var(--primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)]"
+              >
+                Abrir cronograma
+              </Link>
+              <button
               type="submit"
               form="plan-general-form"
               className="inline-flex items-center justify-center rounded-2xl border border-[var(--primary)] bg-[var(--primary)] px-4 py-3 text-sm font-medium text-white transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)]"

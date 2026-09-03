@@ -42,12 +42,32 @@ export type PlannedLesson = {
   methodology: string | null;
   observationsTemplate: string | null;
   plannedDate: string | null;
+  actualDate: string | null;
   lessonNumber: number;
   durationLessons: number;
   status: PlannedLessonStatus;
   position: number;
+  completedAt: string | null;
+  postponedFrom: string | null;
+  executionNotes: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type LessonExecutionSnapshot = {
+  followedPlan: boolean;
+  note: string | null;
+  actualKnowledgeObjects: string | null;
+  actualObjectives: string | null;
+  actualMethodology: string | null;
+  actualObservations: string | null;
+};
+
+export type PlannedLessonWithContext = PlannedLesson & {
+  unitTitle: string | null;
+  unitPosition: number | null;
+  assignment: TeachingPlanAssignmentSummary;
+  planTitle: string;
 };
 
 export type TeachingPlanAssignmentSummary = {
@@ -172,6 +192,53 @@ export type DeletePlannedLessonInput = {
 export type ReorderPlannedLessonsInput = {
   teachingPlanId: string;
   lessonIdsInOrder: string[];
+};
+
+export type ScheduleFilters = {
+  status?: PlannedLessonStatus | "";
+  unitId?: string;
+  startDate?: string;
+  endDate?: string;
+};
+
+export type UpdatePlannedLessonDateInput = {
+  id: string;
+  teachingPlanId: string;
+  plannedDate: string | null;
+};
+
+export type AutoDistributeLessonsInput = {
+  teachingPlanId: string;
+  startDate: string;
+  weekDays: number[];
+  lessonsPerMeeting: number;
+  endDate: string | null;
+  overwriteScheduledDates: boolean;
+};
+
+export type CompletePlannedLessonInput = {
+  id: string;
+  teachingPlanId: string;
+  actualDate: string;
+  followedPlan: boolean;
+  note: string | null;
+  actualKnowledgeObjects: string | null;
+  actualObjectives: string | null;
+  actualMethodology: string | null;
+  actualObservations: string | null;
+};
+
+export type PostponePlannedLessonInput = {
+  id: string;
+  teachingPlanId: string;
+  plannedDate: string;
+  note: string | null;
+};
+
+export type CancelPlannedLessonInput = {
+  id: string;
+  teachingPlanId: string;
+  note: string | null;
 };
 
 export type ValidationResult<T> =

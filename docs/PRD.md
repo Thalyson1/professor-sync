@@ -607,3 +607,42 @@ Fora de escopo nesta sprint:
 - importação de PDF ou Word;
 - embeddings;
 - RAG.
+
+---
+
+# Atualização de Escopo — Cronograma e Execução Inicial
+
+Estado atual validado em 11 de agosto de 2026:
+
+- o planejamento semestral já possui planos, unidades e aulas persistidos no Supabase;
+- a geração assistida por IA já funciona como rascunho revisável;
+- o cronograma agora passa a organizar as aulas em sequência temporal utilizável pelo professor.
+
+Escopo implementado nesta sprint:
+
+- rota `/planejamento/[planoId]/cronograma`;
+- rota `/planejamento/hoje`;
+- listagem cronológica das aulas por data prevista, posição e número;
+- filtros por status, unidade e intervalo de datas;
+- edição da data prevista;
+- distribuição automática de aulas por dias da semana e quantidade de tempos por encontro;
+- ações de marcar como realizada, adiar e cancelar;
+- preservação da diferença entre planejado e realizado;
+- preparação da estrutura para futuro registro de aula e envio ao SIAGE.
+
+Regras desta fase:
+
+- aulas concluídas não são redistribuídas automaticamente;
+- datas existentes só são sobrescritas com confirmação explícita;
+- o professor pode registrar que seguiu o planejamento ou que executou conteúdo diferente;
+- o conteúdo realizado não substitui automaticamente o planejamento original;
+- ainda não existe escrita no SIAGE.
+
+Fora de escopo nesta sprint:
+
+- frequência;
+- avaliações;
+- calendário visual complexo;
+- envio do registro de aula ao SIAGE;
+- automação de frequência;
+- automação de notas.

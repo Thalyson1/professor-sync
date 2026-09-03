@@ -5,14 +5,29 @@ import { revalidatePath } from "next/cache";
 import { createRlsClient } from "@/lib/supabase/server";
 
 import {
+  autoDistributeLessonsSchema,
+  cancelPlannedLessonSchema,
+  completePlannedLessonSchema,
   createPlannedLessonSchema,
   createPlanUnitSchema,
   createTeachingPlanSchema,
+  postponePlannedLessonSchema,
+  updatePlannedLessonDateSchema,
   updateTeachingPlanSchema
 } from "../schemas";
 import { translateSupabaseError } from "../utils/errors";
 import {
+  emptyExecutionSnapshot,
+  parseLessonExecutionSnapshot,
+  serializeLessonExecutionSnapshot,
+  validateExecutionSnapshot
+} from "../utils/execution";
+import {
+  buildCancelledLessonPayload,
+  buildCompletedLessonPayload,
+  buildPlannedLessonDateUpdatePayload,
   buildPlannedLessonInsertPayload,
+  buildPostponedLessonPayload,
   buildPlannedLessonUpdatePayload,
   buildPlanUnitInsertPayload,
   buildPlanUnitUpdatePayload,
@@ -20,18 +35,24 @@ import {
   buildTeachingPlanUpdatePayload
 } from "../utils/payloads";
 import { buildReorderMap, hasDuplicateIds } from "../utils/reorder";
+import { buildAutomaticLessonDistribution } from "../utils/schedule";
 import { canArchiveTeachingPlan, isPlannedLessonStatus } from "../utils/status-rules";
 
 import type {
   ActionResult,
   ArchiveTeachingPlanInput,
+  AutoDistributeLessonsInput,
+  CancelPlannedLessonInput,
+  CompletePlannedLessonInput,
   DeletePlannedLessonInput,
   DeletePlanUnitInput,
   PlannedLesson,
   PlanUnit,
+  PostponePlannedLessonInput,
   ReorderPlannedLessonsInput,
   ReorderPlanUnitsInput,
   TeachingPlan,
+  UpdatePlannedLessonDateInput,
   UpdatePlannedLessonInput,
   UpdatePlanUnitInput
 } from "../types";
@@ -538,6 +559,275 @@ export async function reorderPlannedLessons(
   }
 }
 
+export async function updatePlannedLessonDate(
+  input: UpdatePlannedLessonDateInput
+): Promise<ActionResult<PlannedLesson>> {
+  const parsed = updatePlannedLessonDateSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return fail(parsed.errors[0], parsed.errors);
+  }
+
+  try {
+    const supabase = await createRlsClient();
+    const lessonResult = await getExistingPlannedLesson(
+      supabase,
+      parsed.data.id,
+      parsed.data.teachingPlanId
+    );
+
+    if (!lessonResult.success) {
+      return lessonResult;
+    }
+
+    if (lessonResult.data.status === "completed") {
+      return fail("A data prevista de uma aula realizada nÃ£o pode ser alterada por este fluxo.");
+    }
+
+    const { data, error } = await supabase
+      .from("planned_lessons")
+      .update(buildPlannedLessonDateUpdatePayload(parsed.data))
+      .eq("id", parsed.data.id)
+      .eq("teaching_plan_id", parsed.data.teachingPlanId)
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      return failFromError(error?.message ?? "NÃ£o foi possÃ­vel atualizar a data prevista.");
+    }
+
+    revalidatePlanningRoutes(parsed.data.teachingPlanId);
+
+    return ok("Data prevista atualizada com sucesso.", mapPlannedLesson(data));
+  } catch (error) {
+    return failUnexpected(error, "NÃ£o foi possÃ­vel atualizar a data prevista.");
+  }
+}
+
+export async function autoDistributePlannedLessons(
+  input: AutoDistributeLessonsInput
+): Promise<ActionResult<{ teachingPlanId: string; updatedCount: number }>> {
+  const parsed = autoDistributeLessonsSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return fail(parsed.errors[0], parsed.errors);
+  }
+
+  try {
+    const supabase = await createRlsClient();
+    const { data: lessons, error } = await supabase
+      .from("planned_lessons")
+      .select("*")
+      .eq("teaching_plan_id", parsed.data.teachingPlanId);
+
+    if (error || !lessons) {
+      return failFromError(
+        error?.message ?? "NÃ£o foi possÃ­vel carregar as aulas para distribuiÃ§Ã£o."
+      );
+    }
+
+    const distribution = buildAutomaticLessonDistribution(
+      lessons.map(mapPlannedLesson),
+      parsed.data
+    );
+
+    if (!distribution.success) {
+      return fail(distribution.message);
+    }
+
+    for (const update of distribution.updates) {
+      const { error: updateError } = await supabase
+        .from("planned_lessons")
+        .update({ planned_date: update.plannedDate })
+        .eq("id", update.lessonId)
+        .eq("teaching_plan_id", parsed.data.teachingPlanId)
+        .neq("status", "completed");
+
+      if (updateError) {
+        return failFromError(updateError.message);
+      }
+    }
+
+    revalidatePlanningRoutes(parsed.data.teachingPlanId);
+
+    return ok("Aulas distribuÃ­das com sucesso no cronograma.", {
+      teachingPlanId: parsed.data.teachingPlanId,
+      updatedCount: distribution.updates.length
+    });
+  } catch (error) {
+    return failUnexpected(error, "NÃ£o foi possÃ­vel distribuir as aulas automaticamente.");
+  }
+}
+
+export async function completePlannedLesson(
+  input: CompletePlannedLessonInput
+): Promise<ActionResult<PlannedLesson>> {
+  const parsed = completePlannedLessonSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return fail(parsed.errors[0], parsed.errors);
+  }
+
+  try {
+    const supabase = await createRlsClient();
+    const lessonResult = await getExistingPlannedLesson(
+      supabase,
+      parsed.data.id,
+      parsed.data.teachingPlanId
+    );
+
+    if (!lessonResult.success) {
+      return lessonResult;
+    }
+
+    const snapshot = parsed.data.followedPlan
+      ? {
+          ...emptyExecutionSnapshot(true),
+          note: parsed.data.note
+        }
+      : {
+          followedPlan: false,
+          note: parsed.data.note,
+          actualKnowledgeObjects: parsed.data.actualKnowledgeObjects,
+          actualObjectives: parsed.data.actualObjectives,
+          actualMethodology: parsed.data.actualMethodology,
+          actualObservations: parsed.data.actualObservations
+        };
+    const snapshotErrors = validateExecutionSnapshot(snapshot);
+
+    if (snapshotErrors.length > 0) {
+      return fail(snapshotErrors[0], snapshotErrors);
+    }
+
+    const { data, error } = await supabase
+      .from("planned_lessons")
+      .update(
+        buildCompletedLessonPayload(
+          parsed.data,
+          serializeLessonExecutionSnapshot(snapshot)
+        )
+      )
+      .eq("id", parsed.data.id)
+      .eq("teaching_plan_id", parsed.data.teachingPlanId)
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      return failFromError(error?.message ?? "NÃ£o foi possÃ­vel marcar a aula como realizada.");
+    }
+
+    revalidatePlanningRoutes(parsed.data.teachingPlanId);
+
+    return ok("Aula marcada como realizada com sucesso.", mapPlannedLesson(data));
+  } catch (error) {
+    return failUnexpected(error, "NÃ£o foi possÃ­vel marcar a aula como realizada.");
+  }
+}
+
+export async function postponePlannedLesson(
+  input: PostponePlannedLessonInput
+): Promise<ActionResult<PlannedLesson>> {
+  const parsed = postponePlannedLessonSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return fail(parsed.errors[0], parsed.errors);
+  }
+
+  try {
+    const supabase = await createRlsClient();
+    const lessonResult = await getExistingPlannedLesson(
+      supabase,
+      parsed.data.id,
+      parsed.data.teachingPlanId
+    );
+
+    if (!lessonResult.success) {
+      return lessonResult;
+    }
+
+    if (lessonResult.data.status === "completed") {
+      return fail("Aulas jÃ¡ realizadas nÃ£o podem ser adiadas.");
+    }
+
+    const existingSnapshot = parseLessonExecutionSnapshot(
+      lessonResult.data.execution_notes
+    );
+    const nextSnapshot = {
+      ...existingSnapshot,
+      note: parsed.data.note ?? existingSnapshot.note
+    };
+
+    const { data, error } = await supabase
+      .from("planned_lessons")
+      .update(
+        buildPostponedLessonPayload(
+          lessonResult.data.planned_date,
+          parsed.data,
+          serializeLessonExecutionSnapshot(nextSnapshot)
+        )
+      )
+      .eq("id", parsed.data.id)
+      .eq("teaching_plan_id", parsed.data.teachingPlanId)
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      return failFromError(error?.message ?? "NÃ£o foi possÃ­vel adiar a aula.");
+    }
+
+    revalidatePlanningRoutes(parsed.data.teachingPlanId);
+
+    return ok("Aula adiada com sucesso.", mapPlannedLesson(data));
+  } catch (error) {
+    return failUnexpected(error, "NÃ£o foi possÃ­vel adiar a aula.");
+  }
+}
+
+export async function cancelPlannedLesson(
+  input: CancelPlannedLessonInput
+): Promise<ActionResult<PlannedLesson>> {
+  const parsed = cancelPlannedLessonSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return fail(parsed.errors[0], parsed.errors);
+  }
+
+  try {
+    const supabase = await createRlsClient();
+    const lessonResult = await getExistingPlannedLesson(
+      supabase,
+      parsed.data.id,
+      parsed.data.teachingPlanId
+    );
+
+    if (!lessonResult.success) {
+      return lessonResult;
+    }
+
+    if (lessonResult.data.status === "completed") {
+      return fail("Aulas realizadas nÃ£o podem ser canceladas por este fluxo.");
+    }
+
+    const { data, error } = await supabase
+      .from("planned_lessons")
+      .update(buildCancelledLessonPayload(parsed.data.note))
+      .eq("id", parsed.data.id)
+      .eq("teaching_plan_id", parsed.data.teachingPlanId)
+      .select("*")
+      .single();
+
+    if (error || !data) {
+      return failFromError(error?.message ?? "NÃ£o foi possÃ­vel cancelar a aula.");
+    }
+
+    revalidatePlanningRoutes(parsed.data.teachingPlanId);
+
+    return ok("Aula cancelada com sucesso.", mapPlannedLesson(data));
+  } catch (error) {
+    return failUnexpected(error, "NÃ£o foi possÃ­vel cancelar a aula.");
+  }
+}
+
 async function getExistingTeachingPlan(
   supabase: Awaited<ReturnType<typeof createRlsClient>>,
   planId: string
@@ -580,6 +870,33 @@ async function hasAnotherActivePlan(
   const { data } = await query.limit(1);
 
   return (data?.length ?? 0) > 0;
+}
+
+async function getExistingPlannedLesson(
+  supabase: Awaited<ReturnType<typeof createRlsClient>>,
+  lessonId: string,
+  teachingPlanId: string
+): Promise<
+  ActionResult<{
+    id: string;
+    teaching_plan_id: string;
+    planned_date: string | null;
+    status: PlannedLesson["status"];
+    execution_notes: string | null;
+  }>
+> {
+  const { data, error } = await supabase
+    .from("planned_lessons")
+    .select("id, teaching_plan_id, planned_date, status, execution_notes")
+    .eq("id", lessonId)
+    .eq("teaching_plan_id", teachingPlanId)
+    .maybeSingle();
+
+  if (error || !data) {
+    return failFromError(error?.message ?? "A aula informada nÃ£o foi encontrada.");
+  }
+
+  return ok("Aula encontrada.", data);
 }
 
 async function ensureUnitBelongsToPlan(
@@ -656,8 +973,10 @@ async function getNextLessonPosition(
 
 function revalidatePlanningRoutes(planId: string) {
   revalidatePath("/planejamento");
+  revalidatePath("/planejamento/hoje");
   revalidatePath("/planejamento/novo");
   revalidatePath(`/planejamento/${planId}`);
+  revalidatePath(`/planejamento/${planId}/cronograma`);
 }
 
 function mapTeachingPlan(
@@ -720,10 +1039,14 @@ function mapPlannedLesson(row: {
   methodology: string | null;
   observations_template: string | null;
   planned_date: string | null;
+  actual_date: string | null;
   lesson_number: number;
   duration_lessons: number;
   status: PlannedLesson["status"];
   position: number;
+  completed_at: string | null;
+  postponed_from: string | null;
+  execution_notes: string | null;
   created_at: string;
   updated_at: string;
 }): PlannedLesson {
@@ -737,10 +1060,14 @@ function mapPlannedLesson(row: {
     methodology: row.methodology,
     observationsTemplate: row.observations_template,
     plannedDate: row.planned_date,
+    actualDate: row.actual_date,
     lessonNumber: row.lesson_number,
     durationLessons: row.duration_lessons,
     status: row.status,
     position: row.position,
+    completedAt: row.completed_at,
+    postponedFrom: row.postponed_from,
+    executionNotes: row.execution_notes,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
