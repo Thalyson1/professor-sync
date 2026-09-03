@@ -21,6 +21,11 @@ export const navigationItems: NavigationItem[] = [
     description: "Estruture planos, cronogramas e etapas pedagógicas."
   },
   {
+    href: "/registros",
+    label: "Registros",
+    description: "Revise aulas realizadas e prepare registros para a sincronizaÃ§Ã£o futura."
+  },
+  {
     href: "/frequencia",
     label: "Frequência",
     description: "Registre pendências e acompanhe o status das presenças."
@@ -68,6 +73,10 @@ export function getPageMetadata(pathname: string) {
       description:
         "Edite informações gerais, unidades e aulas planejadas do semestre."
     };
+  }
+
+  if (pathname.startsWith("/registros/")) {
+    return { href: pathname, label: "Registro de aula", description: "Revise o conteÃºdo realizado antes da futura sincronizaÃ§Ã£o." };
   }
 
   return (

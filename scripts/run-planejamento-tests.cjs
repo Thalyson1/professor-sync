@@ -31,7 +31,10 @@ const {
   "src/features/planejamento/schemas/index.ts"
 ));
 const {
+  buildCancelledLessonPayload,
+  buildCompletedLessonPayload,
   buildPlannedLessonInsertPayload,
+  buildPostponedLessonPayload,
   buildTeachingPlanInsertPayload,
   normalizeNullableText
 } = require(path.join(
@@ -68,6 +71,14 @@ const {
 } = require(path.join(
   projectRoot,
   "src/features/planejamento/utils/schedule.ts"
+));
+const { validateLessonRecordUpdate } = require(path.join(
+  projectRoot,
+  "src/features/registros/schemas.ts"
+));
+const { buildSiageLessonPayload } = require(path.join(
+  projectRoot,
+  "src/features/siage/lesson-records/index.ts"
 ));
 
 const tests = [
@@ -544,6 +555,50 @@ const tests = [
     }
   },
   {
+    name: "execution payloads preserve the intended status transitions",
+    run() {
+      const completed = buildCompletedLessonPayload(
+        {
+          id: "lesson-1",
+          teachingPlanId: "plan-1",
+          actualDate: "2026-09-03",
+          followedPlan: true,
+          note: null,
+          actualKnowledgeObjects: null,
+          actualObjectives: null,
+          actualMethodology: null,
+          actualObservations: null
+        },
+        "{\"version\":1}"
+      );
+      const postponed = buildPostponedLessonPayload(
+        "2026-09-03",
+        {
+          id: "lesson-1",
+          teachingPlanId: "plan-1",
+          plannedDate: "2026-09-10",
+          note: "Feriado escolar"
+        },
+        "{\"version\":1}"
+      );
+      const cancelled = buildCancelledLessonPayload("Sem aula por conselho.");
+
+      assert.equal(completed.status, "completed");
+      assert.equal(completed.actual_date, "2026-09-03");
+      assert.ok(completed.completed_at);
+      assert.deepEqual(postponed, {
+        status: "postponed",
+        planned_date: "2026-09-10",
+        postponed_from: "2026-09-03",
+        execution_notes: "{\"version\":1}"
+      });
+      assert.deepEqual(cancelled, {
+        status: "cancelled",
+        execution_notes: "Sem aula por conselho."
+      });
+    }
+  },
+  {
     name: "getLessonVisualStatus reflects cronograma states including sem data",
     run() {
       assert.equal(
@@ -594,6 +649,41 @@ const tests = [
         }),
         "Realizada"
       );
+    }
+  },
+  {
+    name: "lesson record validation accepts SIAGE-compatible execution data",
+    run() {
+      const result = validateLessonRecordUpdate({
+        id: "record-1",
+        lessonDate: "2026-09-03",
+        knowledgeObjects: "VariÃ¡veis e tipos",
+        methodology: "Aula contextualizada",
+        observations: "ExercÃ­cios concluÃ­dos.",
+        numberOfLessons: 2
+      });
+      assert.equal(result.success, true);
+    }
+  },
+  {
+    name: "lesson record validation rejects incompatible methodologies",
+    run() {
+      const result = validateLessonRecordUpdate({
+        id: "record-1",
+        lessonDate: "2026-09-03",
+        methodology: "Metodologia inventada",
+        numberOfLessons: 1
+      });
+      assert.equal(result.success, false);
+    }
+  },
+  {
+    name: "SIAGE lesson mapper remains partial without a captured write payload",
+    run() {
+      const result = buildSiageLessonPayload({});
+      assert.equal(result.supported, false);
+      assert.equal(result.payload, null);
+      assert.ok(result.pendingInternalFields.includes("methodology"));
     }
   }
 ];

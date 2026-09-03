@@ -1,0 +1,1 @@
+export default function LoadingRecord() { return <div className="space-y-5"><div className="h-10 w-72 animate-pulse rounded bg-[var(--card-strong)]" /><div className="h-80 animate-pulse rounded-3xl bg-[var(--card-strong)]" /></div>; }

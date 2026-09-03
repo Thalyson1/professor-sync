@@ -287,3 +287,18 @@ This is intentionally temporary and must change before production.
 - There are still no attendance, lesson register, or assessment tables connected to this planning flow
 - Ordering is currently done with explicit `position` swaps, not drag and drop
 - `execution_notes` currently stores a structured text payload instead of dedicated execution columns for each realized field
+- Migration `202609030001_fix_planning_rls_and_plan_unit_delete.sql` creates the temporary development policies for planning and keeps lessons when their optional unit is deleted
+
+## Lesson records
+
+`lesson_records` keeps the reviewed internal record of an executed lesson without overwriting `planned_lessons`.
+
+- `planned_lesson_id` is unique, so one planned lesson produces one internal record.
+- `teacher_assignment_id` identifies the real class and subject context imported from SIAGE.
+- `lesson_date`, `knowledge_objects`, `methodology`, `observations`, and `number_of_lessons` hold the reviewed execution values.
+- Statuses are internal: `draft`, `ready`, `synced`, and `sync_error`.
+- Migration `202609030002_create_lesson_records.sql` creates the table, indexes, update trigger, and temporary development RLS policy.
+
+The data flow is: `teaching_plan -> planned_lesson -> execution snapshot -> lesson_record -> [future] SIAGE`.
+
+The SIAGE POC has confirmed read endpoints and the record-aula navigation route, but no creation request body. `src/features/siage/lesson-records/buildSiageLessonPayload` intentionally returns no external payload until a manual capture confirms the SIAGE write contract.

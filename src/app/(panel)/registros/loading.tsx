@@ -1,0 +1,1 @@
+export default function LoadingRecords() { return <div className="space-y-4"><div className="h-10 w-64 animate-pulse rounded bg-[var(--card-strong)]" />{Array.from({ length: 3 }, (_, index) => <div key={index} className="h-28 animate-pulse rounded-2xl bg-[var(--card-strong)]" />)}</div>; }

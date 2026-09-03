@@ -514,6 +514,48 @@ export type Database = {
         };
         Relationships: Relationship[];
       };
+      lesson_records: {
+        Row: {
+          id: string;
+          planned_lesson_id: string;
+          teacher_assignment_id: string;
+          lesson_date: string;
+          knowledge_objects: string | null;
+          methodology: string | null;
+          observations: string | null;
+          number_of_lessons: number;
+          status: "draft" | "ready" | "synced" | "sync_error";
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          planned_lesson_id: string;
+          teacher_assignment_id: string;
+          lesson_date: string;
+          knowledge_objects?: string | null;
+          methodology?: string | null;
+          observations?: string | null;
+          number_of_lessons?: number;
+          status?: "draft" | "ready" | "synced" | "sync_error";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          planned_lesson_id?: string;
+          teacher_assignment_id?: string;
+          lesson_date?: string;
+          knowledge_objects?: string | null;
+          methodology?: string | null;
+          observations?: string | null;
+          number_of_lessons?: number;
+          status?: "draft" | "ready" | "synced" | "sync_error";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: Relationship[];
+      };
       students: {
         Row: {
           id: string;

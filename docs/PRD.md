@@ -646,3 +646,14 @@ Fora de escopo nesta sprint:
 - envio do registro de aula ao SIAGE;
 - automação de frequência;
 - automação de notas.
+
+---
+
+# Atualização de Escopo - Registro de Aula Interno
+
+O fluxo interno agora preserva planejamento, aula planejada, execução e registro de aula revisável.
+
+- `/registros` lista registros por data, turma, disciplina e status.
+- `/registros/[id]` permite revisar o que foi realizado e marcar o registro como pronto para sincronização.
+- Nenhum registro é enviado ao SIAGE nesta etapa.
+- O payload de criação de registro de aula no SIAGE permanece pendente de captura manual autenticada.

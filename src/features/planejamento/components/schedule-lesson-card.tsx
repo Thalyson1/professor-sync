@@ -10,6 +10,7 @@ import { deriveLessonExecutionRecord, parseLessonExecutionSnapshot } from "../ut
 import { getLessonVisualStatus } from "../utils/schedule";
 import { getPlannedLessonStatusLabel } from "../utils/status-rules";
 import { FormSubmitButton } from "@/features/turmas/components/form-submit-button";
+import { createLessonRecordAction } from "@/features/registros/form-actions";
 
 import type { PlanUnit, PlannedLesson } from "../types";
 
@@ -95,6 +96,14 @@ export function ScheduleLessonCard({
           </div>
         </div>
       )}
+
+      {lesson.status === "completed" ? (
+        <form action={createLessonRecordAction} className="mt-5 rounded-2xl border border-sky-200 bg-sky-50 p-4">
+          <input type="hidden" name="plannedLessonId" value={lesson.id} />
+          <p className="text-sm text-sky-950">Gere um rascunho revisÃ¡vel com os dados realmente executados. Nenhuma informaÃ§Ã£o serÃ¡ enviada ao SIAGE.</p>
+          <div className="mt-3"><FormSubmitButton idleLabel="Criar registro de aula" pendingLabel="Criando registro..." /></div>
+        </form>
+      ) : null}
 
       <div className="mt-5 grid gap-4 xl:grid-cols-3">
         <form
