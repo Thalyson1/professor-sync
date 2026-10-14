@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Professor Sync - Excel Import Store</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    }
+
+    body {
+      width: 1280px;
+      height: 800px;
+      overflow: hidden;
+      background: #090d16;
+      display: flex;
+      flex-direction: column;
+      color: #f1f5f9;
+    }
+
+    .browser-bar {
+      height: 48px;
+      background: #111827;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 14px;
+      border-bottom: 1px solid #1f2937;
+      z-index: 10;
+    }
+
+    .window-dots {
+      display: flex;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+    .dot.red { background: #ef4444; }
+    .dot.yellow { background: #f59e0b; }
+    .dot.green { background: #10b981; }
+
+    .url-bar {
+      flex: 1;
+      max-width: 650px;
+      height: 32px;
+      background: #1f2937;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      font-size: 13px;
+      color: #9ca3af;
+      gap: 8px;
+      border: 1px solid #374151;
+    }
+
+    .url-bar .lock {
+      color: #10b981;
+      font-size: 12px;
+    }
+
+    .url-bar span.domain {
+      color: #f3f4f6;
+      font-weight: 500;
+    }
+
+    .extension-icon-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-left: auto;
+    }
+
+    .ext-active-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #34d399;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 8px;
+    }
+
+    .viewport {
+      display: flex;
+      flex: 1;
+      height: calc(800px - 48px);
+      position: relative;
+    }
+
+    .siage-background {
+      flex: 1;
+      padding: 32px 40px;
+      background: radial-gradient(circle at 20% 30%, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.95) 100%);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      border-right: 1px solid #1e293b;
+    }
+
+    .siage-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #334155;
+    }
+
+    .gov-badge {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .gov-logo-box {
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 16px;
+      color: white;
+    }
+
+    .gov-titles h2 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+
+    .gov-titles p {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    .hero-banner {
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(16, 185, 129, 0.08));
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      border-radius: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .hero-banner h1 {
+      font-size: 22px;
+      font-weight: 800;
+      color: #ffffff;
+      letter-spacing: -0.5px;
+    }
+
+    .hero-banner p {
+      font-size: 13px;
+      color: #cbd5e1;
+      max-width: 580px;
+      line-height: 1.6;
+    }
+
+    .feature-pills {
+      display: flex;
+      gap: 10px;
+      margin-top: 6px;
+    }
+
+    .pill {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .siage-table-mock {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid #334155;
+      border-radius: 14px;
+      overflow: hidden;
+      flex: 1;
+    }
+
+    .table-top {
+      padding: 14px 20px;
+      background: #1e293b;
+      font-size: 13px;
+      font-weight: 700;
+      color: #e2e8f0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .table-row {
+      display: flex;
+      padding: 12px 20px;
+      border-bottom: 1px solid #1e293b;
+      font-size: 12px;
+      color: #94a3b8;
+      align-items: center;
+    }
+
+    .table-row.header-row {
+      background: #0f172a;
+      font-weight: 600;
+      color: #cbd5e1;
+    }
+
+    .col-turma { width: 45%; }
+    .col-disc { width: 35%; }
+    .col-status { width: 20%; text-align: right; }
+
+    .tag-synced {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 11px;
+      display: inline-block;
+    }
+
+    .extension-panel {
+      width: 440px;
+      background: #0c0e14;
+      border-left: 1px solid #1e293b;
+      display: flex;
+      flex-direction: column;
+      box-shadow: -10px 0 40px rgba(0, 0, 0, 0.6);
+    }
+
+    .ext-header {
+      padding: 18px 20px;
+      background: rgba(17, 24, 39, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid #1f2937;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .ext-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .ext-logo {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #10b981, #06b6d4);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 16px;
+      color: #042f2e;
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+    }
+
+    .ext-brand-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #f9fafb;
+      letter-spacing: -0.3px;
+    }
+
+    .ext-brand-sub {
+      font-size: 11px;
+      color: #9ca3af;
+    }
+
+    .ext-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 16px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: #34d399;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .ext-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+    }
+
+    .ext-tabs {
+      display: flex;
+      padding: 8px 12px;
+      gap: 6px;
+      background: #111827;
+      border-bottom: 1px solid #1f2937;
+    }
+
+    .ext-tab {
+      flex: 1;
+      padding: 8px 4px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #9ca3af;
+      background: transparent;
+      border: none;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .ext-tab.active {
+      background: #1f2937;
+      color: #f3f4f6;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .ext-content {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .excel-dropzone {
+      background: rgba(16, 185, 129, 0.05);
+      border: 2px dashed rgba(16, 185, 129, 0.35);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 8px;
+    }
+
+    .excel-icon {
+      font-size: 28px;
+    }
+
+    .excel-file-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #1f2937;
+      border: 1px solid #374151;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #34d399;
+    }
+
+    .plan-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .stat-card {
+      background: #131a29;
+      border: 1px solid #23304a;
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+    }
+
+    .stat-num {
+      font-size: 20px;
+      font-weight: 800;
+      color: #38bdf8;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: #94a3b8;
+      font-weight: 600;
+    }
+
+    .lesson-item {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 10px;
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .lesson-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      font-weight: 700;
+      color: #38bdf8;
+    }
+
+    .lesson-desc {
+      font-size: 12px;
+      color: #e2e8f0;
+      line-height: 1.4;
+    }
+
+    .sync-btn {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 16px rgba(16, 185, 129, 0.35);
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="browser-bar">
+    <div class="window-dots">
+      <div class="dot red"></div>
+      <div class="dot yellow"></div>
+      <div class="dot green"></div>
+    </div>
+    <div class="url-bar">
+      <span class="lock">🔒</span>
+      <span class="domain">professor.see.pb.gov.br</span>/diario-classe/registro-aula
+    </div>
+    <div class="extension-icon-bar">
+      <div class="ext-active-btn">
+        <span>⚡</span> Professor Sync Ativo
+      </div>
+    </div>
+  </div>
+
+  <div class="viewport">
+    <div class="siage-background">
+      <div class="siage-header">
+        <div class="gov-badge">
+          <div class="gov-logo-box">PB</div>
+          <div class="gov-titles">
+            <h2>Governo da Paraíba • Secretaria de Estado da Educação</h2>
+            <p>SIAGE — Sistema Integrado de Acompanhamento da Gestão Escolar</p>
+          </div>
+        </div>
+        <div class="tag-synced">Planejamento Curricular</div>
+      </div>
+
+      <div class="hero-banner">
+        <h1>Importação Inteligente de Planilhas Pedagógicas</h1>
+        <p>Carregue sua planilha anual do Excel (.xlsx ou .csv) e vincule automaticamente cada conteúdo curricular às datas de aula do SIAGE.</p>
+        <div class="feature-pills">
+          <div class="pill">📊 Reconhecimento Automático de Colunas</div>
+          <div class="pill">📅 Mapeamento com Calendário Escolar</div>
+          <div class="pill">💾 Armazenamento Offline Seguro</div>
+        </div>
+      </div>
+
+      <div class="siage-table-mock">
+        <div class="table-top">
+          <span>Cronograma do Bimestre — Matriz Curricular</span>
+          <span style="font-size: 11px; color: #34d399;">✓ Planilha Sincronizada</span>
+        </div>
+        <div class="table-row header-row">
+          <div class="col-turma">Tema da Unidade</div>
+          <div class="col-disc">Carga Horária</div>
+          <div class="col-status">Progresso</div>
+        </div>
+        <div class="table-row">
+          <div class="col-turma">Unidade 1: Lógica e Algoritmos Estruturados</div>
+          <div class="col-disc">20 Horas / Aula</div>
+          <div class="col-status"><span class="tag-synced">100% Concluído</span></div>
+        </div>
+        <div class="table-row">
+          <div class="col-turma">Unidade 2: Programação Web Moderna e APIs</div>
+          <div class="col-disc">30 Horas / Aula</div>
+          <div class="col-status"><span class="tag-synced">Em Andamento</span></div>
+        </div>
+        <div class="table-row">
+          <div class="col-turma">Unidade 3: Banco de Dados Relacional e Nuvem</div>
+          <div class="col-disc">25 Horas / Aula</div>
+          <div class="col-status"><span style="color:#94a3b8; font-size:11px;">Programado</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="extension-panel">
+      <div class="ext-header">
+        <div class="ext-brand">
+          <div class="ext-logo">PS</div>
+          <div>
+            <div class="ext-brand-title">Professor Sync</div>
+            <div class="ext-brand-sub">Assistente SIAGE PB</div>
+          </div>
+        </div>
+        <div class="ext-badge">
+          <div class="ext-dot"></div>
+          Conectado
+        </div>
+      </div>
+
+      <div class="ext-tabs">
+        <div class="ext-tab">Chamada & Aula</div>
+        <div class="ext-tab active">Plano Excel</div>
+        <div class="ext-tab">Histórico</div>
+      </div>
+
+      <div class="ext-content">
+        <div class="excel-dropzone">
+          <div class="excel-icon">📑</div>
+          <div class="excel-file-badge">✓ plano_anual_2026.xlsx</div>
+          <div style="font-size: 11px; color: #94a3b8;">Planilha carregada na memória local do navegador</div>
+        </div>
+
+        <div class="plan-stats">
+          <div class="stat-card">
+            <div class="stat-num">48</div>
+            <div class="stat-label">Aulas Mapeadas</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num">100%</div>
+            <div class="stat-label">Pronto p/ SIAGE</div>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-size: 11px; font-weight: 700; color: #94a3b8;">PRÓXIMAS AULAS DO CRONOGRAMA:</div>
+          <div class="lesson-item">
+            <div class="lesson-meta">
+              <span>Aula 14 • 14/10/2026</span>
+              <span style="color: #34d399;">Hoje</span>
+            </div>
+            <div class="lesson-desc">Desenvolvimento Web: Integração Frontend e Backend com Node.js e React.</div>
+          </div>
+          <div class="lesson-item">
+            <div class="lesson-meta">
+              <span>Aula 15 • 21/10/2026</span>
+              <span>Próxima</span>
+            </div>
+            <div class="lesson-desc">Estruturação de Banco de Dados e Modelagem de Entidades Relacionais.</div>
+          </div>
+        </div>
+
+        <button class="sync-btn">
+          <span>📑</span> Importar Nova Planilha Excel
+        </button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

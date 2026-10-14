@@ -23,14 +23,14 @@ export const networkSummaryFile = path.join(outputRoot, "network-summary.json");
 
 export function parseArgs(argv) {
   const options = {
-    url: process.env.SIAGE_POC_URL ?? "",
+    url: process.env.SIAGE_POC_URL || "https://professor.see.pb.gov.br/auth",
     freshSession: false,
     maxPages: 8,
     saveHtml: true,
   };
 
   const recognized = {
-    url: options.url ? "env" : "default",
+    url: options.url ? "default" : "default",
     freshSession: "default",
     maxPages: "default",
     saveHtml: "default",
@@ -60,6 +60,12 @@ export function parseArgs(argv) {
         recognized.url = "cli";
       }
 
+      continue;
+    }
+
+    if (arg.startsWith("http://") || arg.startsWith("https://")) {
+      options.url = normalizeCliValue(arg);
+      recognized.url = "cli";
       continue;
     }
 
@@ -341,6 +347,10 @@ const SENSITIVE_FIELD_FRAGMENTS = [
   "email",
   "telefone",
   "documento",
+  "senha",
+  "password",
+  "token",
+  "authorization",
 ];
 
 export function sanitizeJsonPayload(value) {
@@ -457,6 +467,30 @@ export async function waitForEnter(promptText) {
   } finally {
     rl.close();
   }
+}
+
+export async function waitForCompletion(page, context, browser, promptText) {
+  const readline = await import("node:readline/promises");
+  const { stdin, stdout } = await import("node:process");
+  const rl = readline.createInterface({ input: stdin, output: stdout });
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      try {
+        rl.close();
+      } catch {}
+      resolve();
+    };
+
+    if (page) page.once("close", finish);
+    if (context) context.once("close", finish);
+    if (browser) browser.once("disconnected", finish);
+
+    rl.question(`${promptText}\n`).then(finish).catch(finish);
+  });
 }
 
 export async function collectNavigationSummary(page) {

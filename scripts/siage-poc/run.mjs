@@ -18,6 +18,7 @@ import {
   savePageArtifacts,
   sessionFile,
   shouldTrackRequest,
+  waitForCompletion,
   waitForEnter,
   writeJsonFile,
 } from "./utils.mjs";
@@ -45,7 +46,7 @@ async function main() {
   const page = await context.newPage();
 
   const captureState = {
-    active: false,
+    active: true,
     currentRouteLabel: "outra",
     requests: [],
     requestMap: new Map(),
@@ -59,7 +60,7 @@ async function main() {
     },
   };
 
-  page.on("framenavigated", (frame) => {
+  page.on("framenavigated", async (frame) => {
     if (frame !== page.mainFrame()) {
       return;
     }
@@ -73,6 +74,10 @@ async function main() {
     if (routeLabel !== "outra" && routeLabel !== "diario") {
       console.log(`[contexto] ${routeLabel}`);
     }
+
+    try {
+      await context.storageState({ path: sessionFile });
+    } catch {}
   });
 
   page.on("request", (request) => {
@@ -83,6 +88,21 @@ async function main() {
     const requestUrl = sanitizeUrl(request.url());
     const routeLabel = captureState.currentRouteLabel;
 
+    // Para requisições de escrita, guardamos o corpo (sanitizado) e apenas os NOMES dos headers.
+    let requestBody;
+    let requestHeaderNames;
+    if (request.method() !== "GET") {
+      const rawBody = request.postData();
+      if (rawBody) {
+        try {
+          requestBody = sanitizeJsonPayload(JSON.parse(rawBody));
+        } catch {
+          requestBody = `[corpo nao-JSON com ${rawBody.length} caracteres]`;
+        }
+      }
+      requestHeaderNames = Object.keys(request.headers());
+    }
+
     captureState.requestMap.set(request, {
       id: `${captureState.requests.length + captureState.requestMap.size + 1}`,
       method: request.method(),
@@ -91,6 +111,8 @@ async function main() {
       routeLabel,
       startedAt: new Date().toISOString(),
       classifiedAs: classifyEndpoint(requestUrl),
+      ...(requestBody !== undefined ? { requestBody } : {}),
+      ...(requestHeaderNames ? { requestHeaderNames } : {}),
     });
   });
 
@@ -123,11 +145,17 @@ async function main() {
 
     let networkFile = null;
 
-    if (isJson) {
-      const payload = await safeReadJson(response);
+    if (isJson || requestRecord.requestBody !== undefined) {
+      const payload = isJson ? await safeReadJson(response) : null;
 
-      if (payload !== null) {
-        const sanitizedPayload = sanitizeJsonPayload(payload);
+      if (payload !== null || requestRecord.requestBody !== undefined) {
+        const sanitizedPayload =
+          requestRecord.requestBody !== undefined
+            ? {
+                request: { method: requestRecord.method, url: requestRecord.url, headerNames: requestRecord.requestHeaderNames, body: requestRecord.requestBody },
+                response: payload === null ? null : sanitizeJsonPayload(payload),
+              }
+            : sanitizeJsonPayload(payload);
         networkFile = await saveSanitizedNetworkPayload(
           captureState.requests.length + 1,
           requestRecord,
@@ -159,6 +187,15 @@ async function main() {
     console.log(
       `[network:${record.routeLabel}] ${record.status} ${record.method} ${record.resourceType} ${record.contentType} ${record.approxSize ?? "unknown"}B ${record.url}`
     );
+
+    if (record.method !== "GET") {
+      console.log(
+        `\n>>> [GRAVAÇÃO CAPTURADA] ${record.method} ${record.url} (Status: ${record.status})`
+      );
+      if (record.networkFile) {
+        console.log(`    Salvo em: ${path.basename(record.networkFile)}\n`);
+      }
+    }
   });
 
   page.on("requestfailed", (request) => {
@@ -173,48 +210,55 @@ async function main() {
   });
 
   try {
-    await page.goto(options.url, { waitUntil: "domcontentloaded" });
-    await page.waitForLoadState("networkidle").catch(() => undefined);
-
     logSection("Abertura");
-    await logPageState(page);
-    await savePageArtifacts(page, "01-initial", options.saveHtml);
+    console.log("Iniciando navegador com gravação de rede ATIVA...");
+    await page.goto(options.url, { waitUntil: "domcontentloaded" }).catch(() => undefined);
 
-    const authenticatedBeforePrompt = await isLikelyAuthenticated(page);
+    logSection("Instruções");
+    console.log("1. Faça o login no navegador aberto pelo Playwright.");
+    console.log("2. Entre na turma e registre a aula (Registrar Aula -> Salvar -> Senha).");
+    console.log("3. Todas as requisições estão sendo gravadas automaticamente.");
+    console.log("4. Ao terminar, aperte ENTER aqui no terminal OU simplesmente feche a janela do navegador.\n");
 
-    if (!authenticatedBeforePrompt) {
-      logSection("Login manual");
-      console.log("Faça o login manualmente no navegador aberto pelo Playwright.");
-      console.log("Depois que a área autenticada carregar, volte ao terminal e pressione Enter.");
-      await waitForEnter("Pressione Enter quando o login estiver concluído.");
-      await page.waitForLoadState("networkidle").catch(() => undefined);
-    }
+    await waitForCompletion(
+      page,
+      context,
+      browser,
+      "Pressione Enter quando terminar de registrar a aula (ou feche o navegador)."
+    );
 
-    const authenticatedAfterPrompt = await isLikelyAuthenticated(page);
-    logItem("Autenticado", authenticatedAfterPrompt ? "sim" : "não confirmado");
+    logSection("Finalizando captura");
+    try {
+      await context.storageState({ path: sessionFile });
+      logItem("Sessão salva", sessionFile);
+    } catch {}
 
-    await context.storageState({ path: sessionFile });
-    logItem("Sessão salva", sessionFile);
-    await savePageArtifacts(page, "02-authenticated", options.saveHtml);
+    try {
+      if (!page.isClosed()) {
+        await savePageArtifacts(page, "03-final-state", options.saveHtml);
+      }
+    } catch {}
 
-    logSection("Captura interativa");
-    console.log("Pressione Enter para iniciar a captura de requisições fetch/XHR.");
-    await waitForEnter("Captura pronta para iniciar.");
-    captureState.active = true;
-    console.log("Captura iniciada. Navegue manualmente no SIAGE.");
-    console.log("Ao terminar, volte ao terminal e pressione Enter para encerrar.");
-    await waitForEnter("Pressione Enter para finalizar a captura.");
-    captureState.active = false;
-
-    await savePageArtifacts(page, "03-final-state", options.saveHtml);
     await writeJsonFile(networkSummaryFile, buildNetworkSummary(captureState.requests, captureState.routeHits));
 
-    logSection("Resumo");
+    logSection("Resumo da Captura");
     logItem("Arquivo de resumo", networkSummaryFile);
     logItem("Requisições capturadas", captureState.requests.length);
     logItem("JSONs sanitizados", captureState.requests.filter((item) => item.networkFile).length);
+
+    const postRequests = captureState.requests.filter((r) => r.method !== "GET");
+    if (postRequests.length > 0) {
+      console.log(`\n>>> SUCESSO: ${postRequests.length} requisição(ões) de envio (POST/PUT) gravada(s)!`);
+      for (const p of postRequests) {
+        console.log(`    - ${p.method} ${p.url} (Status: ${p.status})`);
+      }
+    }
+  } catch (error) {
+    console.error("Aviso:", error?.message || error);
   } finally {
-    await browser.close();
+    try {
+      await browser.close();
+    } catch {}
   }
 }
 
