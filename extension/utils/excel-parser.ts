@@ -7,6 +7,8 @@ export interface ParsedLessonRow {
   topic: string; // Objetos de Conhecimento
   methodology?: string;
   observations?: string;
+  bncc?: string;
+  recursosDidaticos?: string;
 }
 
 export interface ParsedWorkbookSheet {
@@ -159,6 +161,8 @@ export function parseXLSXBuffer(arrayBuffer: ArrayBuffer): ParsedWorkbookSheet[]
       let metPrevIdx = -1;
       let obsIdx = -1;
       let aulaNumIdx = -1;
+      let bnccIdx = -1;
+      let recursosIdx = -1;
 
       header.forEach((c, idx) => {
         const s = String(c || '').toLowerCase().trim();
@@ -173,6 +177,10 @@ export function parseXLSXBuffer(arrayBuffer: ArrayBuffer): ParsedWorkbookSheet[]
           dateIdx = idx;
         } else if (s.includes('aula') || s.includes('nº') || s.includes('número')) {
           aulaNumIdx = idx;
+        } else if (s.includes('bncc') || s.includes('habilidade') || s.includes('hab_') || s.includes('código bncc') || s.includes('codigo bncc')) {
+          bnccIdx = idx;
+        } else if (s.includes('recurso') || s.includes('material') || s.includes('didatico') || s.includes('didático')) {
+          recursosIdx = idx;
         } else if (s.includes('objeto') && (s.includes('ministrado') || s.includes('real'))) {
           topicRealIdx = idx;
         } else if (s.includes('objeto') && (s.includes('previsto') || s.includes('siage'))) {
@@ -264,6 +272,8 @@ export function parseXLSXBuffer(arrayBuffer: ArrayBuffer): ParsedWorkbookSheet[]
           (metPrevIdx !== -1 && r[metPrevIdx] ? String(r[metPrevIdx]).trim() : undefined);
 
         const obs = obsIdx !== -1 && r[obsIdx] ? String(r[obsIdx]).trim() : undefined;
+        const bncc = bnccIdx !== -1 && r[bnccIdx] ? String(r[bnccIdx]).trim() : undefined;
+        const recursos = recursosIdx !== -1 && r[recursosIdx] ? String(r[recursosIdx]).trim() : undefined;
 
         lessons.push({
           number: lessons.length + 1,
@@ -271,6 +281,8 @@ export function parseXLSXBuffer(arrayBuffer: ArrayBuffer): ParsedWorkbookSheet[]
           topic,
           methodology: met,
           observations: obs,
+          bncc,
+          recursosDidaticos: recursos,
         });
       }
 
@@ -308,6 +320,8 @@ export function parseCSVorTableText(rawText: string): ParsedLessonRow[] {
   let metRealIdx = -1;
   let metPrevIdx = -1;
   let obsIdx = -1;
+  let bnccIdx = -1;
+  let recursosIdx = -1;
 
   for (let i = 0; i < Math.min(lines.length, 15); i++) {
     const lineLower = lines[i].toLowerCase();
@@ -322,6 +336,8 @@ export function parseCSVorTableText(rawText: string): ParsedLessonRow[] {
       cols.forEach((col, idx) => {
         if (col.includes('data') || col === 'dia' || col.startsWith('dia ') || col.includes('dt_')) dateIdx = idx;
         else if (col.includes('turma')) turmaIdx = idx;
+        else if (col.includes('bncc') || col.includes('habilidade') || col.includes('hab_')) bnccIdx = idx;
+        else if (col.includes('recurso') || col.includes('material') || col.includes('didatico') || col.includes('didático')) recursosIdx = idx;
         else if (col.includes('objeto') && (col.includes('ministrado') || col.includes('real'))) topicRealIdx = idx;
         else if (col.includes('objeto') && (col.includes('previsto') || col.includes('siage'))) topicPrevIdx = idx;
         else if (col.includes('objeto') || col.includes('conteudo') || col.includes('conteúdo') || col.includes('tema') || col.includes('assunto')) {
@@ -360,6 +376,8 @@ export function parseCSVorTableText(rawText: string): ParsedLessonRow[] {
         topic: topicVal,
         methodology: methodologyIdx !== -1 ? cells[methodologyIdx] : undefined,
         observations: obsIdx !== -1 ? cells[obsIdx] : undefined,
+        bncc: bnccIdx !== -1 ? cells[bnccIdx] : undefined,
+        recursosDidaticos: recursosIdx !== -1 ? cells[recursosIdx] : undefined,
       });
     } else {
       // Fallback inteligente para colunas sem cabeçalho explícito

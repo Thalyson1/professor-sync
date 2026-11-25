@@ -20,10 +20,30 @@ import {
   SIAGE_API_BASE,
   type SiageFetchedClass,
 } from '../utils/siage-api';
+import {
+  injectIescolarFloatingWidget,
+  showIescolarPreviewModal,
+  detectIescolarDiaryInfo,
+  showIescolarToast,
+} from '../utils/iescolar-driver';
+import type { ParsedWorkbookSheet } from '../utils/excel-parser';
 
 export default defineContentScript({
-  matches: ['*://professor.see.pb.gov.br/*'],
+  matches: [
+    '*://professor.see.pb.gov.br/*',
+    'https://marizopolis.iescolaronline.com.br/*',
+  ],
   main() {
+    const isIescolar = window.location.hostname.includes('iescolaronline.com.br');
+
+    if (isIescolar) {
+      console.log('[Professor Sync] Injetado no iEscolar Online (Marizópolis) com sucesso.');
+      injectIescolarFloatingWidget();
+      setupIescolarMessageListeners();
+      return;
+    }
+
+    // Fluxo SIAGE PB
     console.log('[Professor Sync Extension] Injetado no SIAGE com sucesso.');
     // Limpar imediatamente qualquer fila legada presa no storage
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
@@ -40,6 +60,37 @@ export default defineContentScript({
     setupPasswordModalAutofill();
   },
 });
+
+function setupIescolarMessageListeners() {
+  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (message.action === 'CHECK_SYSTEM') {
+        const diary = detectIescolarDiaryInfo();
+        sendResponse({ system: 'iescolar', diary });
+        return true;
+      }
+
+      if (message.action === 'OPEN_IESCOLAR_PREVIEW' || message.action === 'FILL_LESSON_PLAN') {
+        if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+          chrome.storage.local.get(['savedSheets', 'savedPlan'], res => {
+            const sheets: ParsedWorkbookSheet[] = res.savedSheets || [];
+            if (sheets.length > 0) {
+              showIescolarPreviewModal(sheets);
+              sendResponse({ success: true });
+            } else if (res.savedPlan && res.savedPlan.length > 0) {
+              showIescolarPreviewModal([{ sheetName: 'Plano Geral', lessons: res.savedPlan }]);
+              sendResponse({ success: true });
+            } else {
+              showIescolarToast('⚠️ Nenhuma planilha encontrada. Abra a extensão no navegador para carregar o seu arquivo Excel.', 'info');
+              sendResponse({ success: false, error: 'Planilha não carregada' });
+            }
+          });
+        }
+        return true;
+      }
+    });
+  }
+}
 
 function setupMessageListeners() {
   if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {

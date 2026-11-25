@@ -11,6 +11,7 @@ export default defineConfig({
     host_permissions: [
       'https://professor.see.pb.gov.br/*',
       'https://api.esaber-professor.see.pb.gov.br/*',
+      'https://marizopolis.iescolaronline.com.br/*',
     ],
     action: {
       default_title: 'Abrir Professor Sync',

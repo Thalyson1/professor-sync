@@ -26,6 +26,8 @@ interface StudentCallItem {
 export default function App() {
   const [activeTab, setActiveTab] = useState<'today' | 'call' | 'excel'>('today');
   const [isLoadingClasses, setIsLoadingClasses] = useState(false);
+  const [currentPlatform, setCurrentPlatform] = useState<'siage' | 'iescolar' | 'other'>('siage');
+  const [iescolarDiary, setIescolarDiary] = useState<{ escola?: string; turma?: string; turno?: string; disciplina?: string; label: string } | null>(null);
 
   // Turmas Reais do SIAGE
   const [siageClasses, setSiageClasses] = useState<SiageFetchedClass[]>([]);
@@ -87,6 +89,25 @@ export default function App() {
         }
       });
     }
+
+    // Identificar plataforma ativa na aba aberta do navegador
+    if (typeof chrome !== 'undefined' && chrome.tabs) {
+      chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+        if (tab?.url?.includes('iescolaronline.com.br')) {
+          setCurrentPlatform('iescolar');
+          setActiveTab('excel');
+          if (tab.id) {
+            chrome.tabs.sendMessage(tab.id, { action: 'CHECK_SYSTEM' }).then(res => {
+              if (res?.diary) setIescolarDiary(res.diary);
+            }).catch(() => {});
+          }
+        } else if (tab?.url?.includes('professor.see.pb.gov.br')) {
+          setCurrentPlatform('siage');
+        } else {
+          setCurrentPlatform('other');
+        }
+      }).catch(() => {});
+    }
   }, []);
 
   const handleSavePassword = (pass: string) => {
@@ -135,13 +156,19 @@ export default function App() {
     if (typeof chrome !== 'undefined' && chrome.tabs) {
       try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (tab?.id && tab.url?.includes('professor.see.pb.gov.br')) {
-          await chrome.tabs.sendMessage(tab.id, { action, payload });
-        } else {
-          alert('Abra a página do SIAGE no seu navegador para preencher os formulários automaticamente.');
+        if (tab?.id) {
+          if (tab.url?.includes('iescolaronline.com.br')) {
+            await chrome.tabs.sendMessage(tab.id, { action, payload });
+            return;
+          }
+          if (tab.url?.includes('professor.see.pb.gov.br')) {
+            await chrome.tabs.sendMessage(tab.id, { action, payload });
+            return;
+          }
+          alert('Abra a página do SIAGE ou do iEscolar no seu navegador para utilizar os comandos da extensão.');
         }
       } catch (err) {
-        alert('Por favor, recarregue a página do SIAGE (F5) para ativar os comandos da extensão.');
+        alert('Por favor, recarregue a página (F5) para ativar os comandos da extensão.');
       }
     }
   };
@@ -264,20 +291,76 @@ export default function App() {
     }
   };
 
-  const copyChatGptPrompt = () => {
-    const prompt = `Atue como um professor especialista da Rede Estadual da Paraíba. Crie um plano de aulas detalhado para a disciplina de [NOME DA MATÉRIA] (Turma: [TURMA]) contendo [NÚMERO] aulas para o ano letivo de 2026.
-IMPORTANTE: As aulas acontecem nas [DIAS DA SEMANA, ex: Terças-feiras].
-Retorne ESTRITAMENTE em formato de tabela (compatível com Excel) contendo exatamente estas 5 colunas:
-Aula	Data	Conteúdo	Metodologia	Observações
+  const buildAnnualPlanPrompt = () => {
+    let turmasSection = '';
+    if (siageClasses && siageClasses.length > 0) {
+      turmasSection = siageClasses
+        .map((c, i) => `${i + 1}. ${c.name} • ${c.subjectName} (${c.room || '2 aulas geminadas na semana'})`)
+        .join('\n');
+    } else {
+      turmasSection = `1. PAOO 3-A (Quartas-feiras - 2 aulas geminadas)
+2. PAOO 3-B (Sextas-feiras - 2 aulas geminadas)
+3. LP 1-A (Terças-feiras - 2 aulas geminadas)
+4. LP 1-B (Terças-feiras - 2 aulas geminadas)
+5. LP 1-C (Terças-feiras - 2 aulas geminadas)
+6. DW 2-A (Quintas-feiras - 2 aulas geminadas)
+7. Estrutura de Dados - 3A (Terças: 1 aula avulsa / Quartas: 1 aula avulsa)`;
+    }
 
-Regras obrigatórias:
-1. Coluna Data no formato brasileiro rigoroso: DD/MM/AAAA (ex: 10/02/2026).
-2. Não pule datas e respeite rigorosamente os dias da semana da disciplina.
-3. Conteúdo focado nos Objetos de Conhecimento oficiais da BNCC / Currículo da Paraíba.
-4. Metodologia descrevendo a estratégia pedagógica (ex: Aula dialogada, Resolução de problemas, Estudo de caso).`;
+    return `Aja como um especialista pedagógico da Rede Estadual da Paraíba. Preciso que você gere o PLANEJAMENTO ANUAL COMPLETO DOS 4 BIMESTRES DE 2026 para as minhas turmas e me entregue um arquivo Excel (.xlsx) pronto para download com uma aba separada para cada turma.
+
+Minhas Turmas:
+${turmasSection}
+
+Regras do Calendário Escolar 2026 da Paraíba (SEE-PB):
+- 1º Bimestre: 10/02/2026 a 23/04/2026
+- 2º Bimestre: 24/04/2026 a 23/07/2026
+- 3º Bimestre: 24/07/2026 a 07/10/2026
+- 4º Bimestre: 08/10/2026 a 22/12/2026
+- Pular feriados e recessos: Carnaval (16 a 18/02), Semana Santa (03/04), Tiradentes (21/04), Dia do Trabalho (01/05), Corpus Christi (04/06), Recesso Junino e São João (18 a 30/06), Fundação da PB (05/08), Independência (07/09), N. Sra Aparecida (12/10), Dia do Professor (15/10), Servidor Público (28/10), Finados (02/11) e Consciência Negra (20/11).
+
+Regra de Aulas Quebradas ou Múltiplos Dias na Semana:
+- Se uma disciplina tiver aulas em dias separados da semana (ex: 1 aula na terça e 1 na quarta):
+  Gere as datas rigorosamente em ordem cronológica (Terça, Quarta, Terça, Quarta...), criando UMA LINHA para cada dia de aula, com a coluna "Aula" numerada de 1 em 1 ("1", "2", "3", "4"...).
+- Se forem aulas geminadas no mesmo dia (ex: 2 tempos na terça):
+  Gere uma linha para o dia com a coluna "Aula" em bloco ("1 e 2", "3 e 4"...).
+- Se for misto (ex: 2 tempos na terça e 1 na quinta):
+  Alterne conforme o dia: Terça "1 e 2", Quinta "3", Terça "4 e 5", Quinta "6"...
+
+Estrutura Obrigatória da Planilha (.xlsx):
+Crie uma aba separada para cada uma das turmas acima. Cada aba deve ter rigorosamente 5 colunas:
+1. "Aula": Numeração conforme os tempos do dia ("1", "2"... ou "1 e 2", "3 e 4"...)
+2. "Data": Formato DD/MM/AAAA calculado exatamente com as datas reais de aula do ano
+3. "Conteúdo (Objeto de Conhecimento)": Progressão pedagógica gradual, técnica e realista aula por aula (com verbos pedagógicos formais adequados ao SIAGE)
+4. "Metodologia": Descrição prática ("Aula dialogada...", "Prática em laboratório...", etc.)
+5. "Observações": Anotações de "Início de Bimestre" e "Avaliação Bimestral"
+
+Execute o código em Python, gere o arquivo "Planejamento_Anual_Completo.xlsx" contendo todas as abas e me forneça o link oficial para download do arquivo.`;
+  };
+
+  const handleOpenChatGptWithPrompt = () => {
+    const prompt = buildAnnualPlanPrompt();
+    try {
+      navigator.clipboard.writeText(prompt);
+      setPromptCopied(true);
+      setTimeout(() => setPromptCopied(false), 3000);
+    } catch (e) {
+      console.warn('Erro ao copiar para clipboard:', e);
+    }
+
+    const chatGptUrl = `https://chatgpt.com/?q=${encodeURIComponent(prompt)}`;
+    if (typeof chrome !== 'undefined' && chrome.tabs) {
+      chrome.tabs.create({ url: chatGptUrl });
+    } else {
+      window.open(chatGptUrl, '_blank');
+    }
+  };
+
+  const copyChatGptPrompt = () => {
+    const prompt = buildAnnualPlanPrompt();
     navigator.clipboard.writeText(prompt);
     setPromptCopied(true);
-    setTimeout(() => setPromptCopied(false), 2000);
+    setTimeout(() => setPromptCopied(false), 2500);
   };
 
   const absencesCount = callStudents.filter(s => !s.present).length;
@@ -436,15 +519,28 @@ Regras obrigatórias:
       {/* Header */}
       <div className="header">
         <div className="brand">
-          <div className="brand-icon">PS</div>
+          <div className="brand-icon" style={{ background: currentPlatform === 'iescolar' ? '#38bdf8' : undefined, color: currentPlatform === 'iescolar' ? '#09090b' : undefined }}>
+            {currentPlatform === 'iescolar' ? 'IE' : 'PS'}
+          </div>
           <div>
             <div className="brand-title">Professor Sync</div>
-            <div className="brand-subtitle">SIAGE Assistant v1.0</div>
+            <div className="brand-subtitle">
+              {currentPlatform === 'iescolar' ? 'iEscolar Marizópolis v1.0' : 'SIAGE PB Assistant v1.0'}
+            </div>
           </div>
         </div>
-        <div className="status-badge">
-          <span className="status-dot"></span>
-          SIAGE Ativo
+        <div
+          className="status-badge"
+          style={{
+            borderColor: currentPlatform === 'iescolar' ? 'rgba(56, 189, 248, 0.4)' : undefined,
+            color: currentPlatform === 'iescolar' ? '#38bdf8' : undefined,
+          }}
+        >
+          <span
+            className="status-dot"
+            style={{ background: currentPlatform === 'iescolar' ? '#38bdf8' : undefined }}
+          ></span>
+          {currentPlatform === 'iescolar' ? 'iEscolar Ativo' : 'SIAGE Ativo'}
         </div>
       </div>
 
@@ -1085,26 +1181,28 @@ Regras obrigatórias:
             >
               <div>
                 <strong style={{ fontSize: '12px', color: '#f4f4f5', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <span>🤖</span> Agente IA no ChatGPT
+                  <span>🤖</span> Gerar Plano Anual no ChatGPT
                 </strong>
                 <span style={{ fontSize: '10px', color: '#a1a1aa' }}>
-                  Gere o plano de aulas da sua disciplina
+                  Abre o ChatGPT com o prompt e turmas já preenchidos
                 </span>
               </div>
-              <a
-                href="https://chatgpt.com"
-                target="_blank"
-                rel="noreferrer"
+              <button
+                type="button"
                 className="btn-primary"
+                onClick={handleOpenChatGptWithPrompt}
                 style={{
                   fontSize: '11px',
-                  padding: '5px 10px',
-                  textDecoration: 'none',
+                  padding: '6px 12px',
                   whiteSpace: 'nowrap',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
                 }}
               >
-                Abrir Agente ↗
-              </a>
+                {promptCopied ? '✅ Abrindo...' : '⚡ Abrir ChatGPT ↗'}
+              </button>
             </div>
 
             {/* Botão Baixar Modelo Padrão */}
@@ -1291,10 +1389,25 @@ Data; Objetos de Conhecimento; Metodologia; Observações
                   ))}
                 </div>
 
+                {currentPlatform === 'iescolar' && iescolarDiary && (
+                  <div style={{ marginTop: '8px', padding: '8px 10px', background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: '6px', fontSize: '11px', color: '#38bdf8' }}>
+                    <strong>Diário Aberto no iEscolar:</strong> {iescolarDiary.label}
+                  </div>
+                )}
+
                 <button
                   className="btn-primary"
-                  style={{ marginTop: '10px' }}
+                  style={{
+                    marginTop: '10px',
+                    background: currentPlatform === 'iescolar'
+                      ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)'
+                      : undefined,
+                  }}
                   onClick={() => {
+                    if (currentPlatform === 'iescolar') {
+                      handleInjectToActiveTab('OPEN_IESCOLAR_PREVIEW', {});
+                      return;
+                    }
                     // Se houver abas de planilha salvas, não envia o array concatenado;
                     // deixa o script casar automaticamente a turma da tela com sua aba correspondente!
                     const toSend = workbookSheets.length > 0 ? [] : parsedLessons;
@@ -1304,7 +1417,9 @@ Data; Objetos de Conhecimento; Metodologia; Observações
                     });
                   }}
                 >
-                  🚀 Inserir Aulas Pendentes no SIAGE
+                  {currentPlatform === 'iescolar'
+                    ? '🚀 Abrir Painel de Registro de Aula (iEscolar)'
+                    : '🚀 Inserir Aulas Pendentes no SIAGE'}
                 </button>
               </div>
             )}
@@ -1315,30 +1430,32 @@ Data; Objetos de Conhecimento; Metodologia; Observações
       {/* Footer / Configuração de Senha */}
       <div className="footer" style={{ flexDirection: 'column', gap: '6px', alignItems: 'stretch' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#a1a1aa' }}>
-          <span>Rede Estadual PB — SIAGE</span>
+          <span>{currentPlatform === 'iescolar' ? 'Marizópolis — iEscolar Online' : 'Rede Estadual PB — SIAGE'}</span>
           <span>Modo Extensão Ativo</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-          <span style={{ fontSize: '11px', color: '#34d399', fontWeight: 600, whiteSpace: 'nowrap' }}>
-            🔑 Auto-Senha Salvar:
-          </span>
-          <input
-            type="password"
-            placeholder="Sua senha do SIAGE (opcional)"
-            value={siagePassword}
-            onChange={e => handleSavePassword(e.target.value)}
-            style={{
-              flex: 1,
-              background: '#09090b',
-              border: '1px solid #27272a',
-              borderRadius: '4px',
-              padding: '4px 8px',
-              color: '#fff',
-              fontSize: '11px',
-            }}
-          />
-          {isPassSaved && <span style={{ fontSize: '10px', color: '#34d399' }}>✅ Salva</span>}
-        </div>
+        {currentPlatform === 'siage' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+            <span style={{ fontSize: '11px', color: '#34d399', fontWeight: 600, whiteSpace: 'nowrap' }}>
+              🔑 Auto-Senha Salvar:
+            </span>
+            <input
+              type="password"
+              placeholder="Sua senha do SIAGE (opcional)"
+              value={siagePassword}
+              onChange={e => handleSavePassword(e.target.value)}
+              style={{
+                flex: 1,
+                background: '#09090b',
+                border: '1px solid #27272a',
+                borderRadius: '4px',
+                padding: '4px 8px',
+                color: '#fff',
+                fontSize: '11px',
+              }}
+            />
+            {isPassSaved && <span style={{ fontSize: '10px', color: '#34d399' }}>✅ Salva</span>}
+          </div>
+        )}
       </div>
     </div>
   );
