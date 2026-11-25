@@ -10,6 +10,10 @@ import {
   formatIescolarDiaryLabel,
   detectIescolarScreen,
   scrapeIescolarDiariesFromDOM,
+  formatTopicForEditorHtml,
+  findConteudoEditorElements,
+  findEditorBlockByLabel,
+  setEditorValueByElements,
 } from '../extension/utils/iescolar-driver.ts';
 
 console.log('--- INICIANDO TESTES DO DRIVER IESCOLAR (DADOS FICTÍCIOS) ---');
@@ -376,5 +380,151 @@ const syncLogin = scrapeIescolarDiariesFromDOM({
 
 assert.strictEqual(syncLogin.status, 'unauthenticated', 'Deve identificar sessão expirada');
 console.log(`✅ [TEST 13] Sessão não autenticada tratada: "${syncLogin.message}"`);
+
+// 14. Teste de Formatação de Conteúdo para CKEditor (Preservação de Quebras de Linha)
+const singleLineHtml = formatTopicForEditorHtml('Expressões Algébricas e Equações do 1º Grau');
+assert.strictEqual(singleLineHtml, '<p>Expressões Algébricas e Equações do 1º Grau</p>');
+console.log(`✅ [TEST 14.1] Tópico linha única formatado: "${singleLineHtml}"`);
+
+const multiLineHtml = formatTopicForEditorHtml('Aula 1: Conceito de variáveis\nAula 2: Resolução de equações');
+assert.strictEqual(multiLineHtml, '<p>Aula 1: Conceito de variáveis</p><p>Aula 2: Resolução de equações</p>');
+console.log(`✅ [TEST 14.2] Tópico com quebras de linha preservadas: "${multiLineHtml}"`);
+
+// 15. Teste de Localização Exata do Editor CONTEÚDO entre 4 Editores no Formulário Real
+function createMockNode(tagName, props = {}, children = []) {
+  const node = {
+    tagName: tagName.toUpperCase(),
+    textContent: props.textContent || '',
+    id: props.id || '',
+    name: props.name || '',
+    value: props.value || '',
+    className: props.className || '',
+    children: [],
+    parentElement: null,
+    style: {},
+    contentDocument: props.isIframe ? { body: { innerHTML: '', textContent: '', dispatchEvent: () => {} } } : undefined,
+    dispatchEvent: () => {},
+    querySelectorAll(selector) {
+      const results = [];
+      const parts = selector.split(',').map(s => s.trim().toLowerCase());
+      const traverse = (curr) => {
+        for (const child of curr.children) {
+          const tag = child.tagName.toLowerCase();
+          const cls = child.className.toLowerCase();
+          for (const p of parts) {
+            if (p === tag) {
+              results.push(child);
+              break;
+            } else if (p.startsWith('.') && cls.includes(p.slice(1))) {
+              results.push(child);
+              break;
+            } else if (p.includes('.') && p.split('.')[0] === tag && cls.includes(p.split('.')[1])) {
+              results.push(child);
+              break;
+            }
+          }
+          traverse(child);
+        }
+      };
+      traverse(this);
+      return results;
+    },
+    querySelector(selector) {
+      return this.querySelectorAll(selector)[0] || null;
+    },
+  };
+
+  for (const c of children) {
+    c.parentElement = node;
+    node.children.push(c);
+  }
+  return node;
+}
+
+// Monta o formulário simulando os 4 editores reais observados no Ciclo IV
+// Editor 0: Metodologia
+const editor0Textarea = createMockNode('textarea', { id: 'formRegistroAula:j_idt147:0:j_idt151', value: '' });
+const editor0Iframe = createMockNode('iframe', { className: 'cke_wysiwyg_frame', isIframe: true });
+const editor0Block = createMockNode('div', {}, [
+  createMockNode('label', { textContent: 'METODOLOGIA' }),
+  editor0Textarea,
+  createMockNode('div', { className: 'cke' }, [editor0Iframe]),
+]);
+
+// Editor 1: CONTEÚDO (ID real observado no iEscolar: formRegistroAula:j_idt147:1:j_idt151)
+const editor1Textarea = createMockNode('textarea', { id: 'formRegistroAula:j_idt147:1:j_idt151', value: '' });
+const editor1Iframe = createMockNode('iframe', { className: 'cke_wysiwyg_frame', isIframe: true });
+const editor1Block = createMockNode('div', {}, [
+  createMockNode('label', { textContent: 'CONTEÚDO' }),
+  editor1Textarea,
+  createMockNode('div', { className: 'cke' }, [editor1Iframe]),
+]);
+
+// Editor 2: Recursos Didáticos
+const editor2Textarea = createMockNode('textarea', { id: 'formRegistroAula:j_idt147:2:j_idt151', value: '' });
+const editor2Iframe = createMockNode('iframe', { className: 'cke_wysiwyg_frame', isIframe: true });
+const editor2Block = createMockNode('div', {}, [
+  createMockNode('label', { textContent: 'RECURSOS DIDÁTICOS' }),
+  editor2Textarea,
+  createMockNode('div', { className: 'cke' }, [editor2Iframe]),
+]);
+
+// Editor 3: Habilidades BNCC
+const editor3Textarea = createMockNode('textarea', { id: 'formRegistroAula:j_idt147:3:j_idt151', value: '' });
+const editor3Iframe = createMockNode('iframe', { className: 'cke_wysiwyg_frame', isIframe: true });
+const editor3Block = createMockNode('div', {}, [
+  createMockNode('label', { textContent: 'HABILIDADES BNCC' }),
+  editor3Textarea,
+  createMockNode('div', { className: 'cke' }, [editor3Iframe]),
+]);
+
+const mockFormRegistroAula = createMockNode('form', { id: 'formRegistroAula' }, [
+  editor0Block,
+  editor1Block,
+  editor2Block,
+  editor3Block,
+]);
+
+// Executa a localização específica de CONTEÚDO
+const foundConteudo = findConteudoEditorElements(mockFormRegistroAula);
+
+assert(foundConteudo.label !== null, 'Label de CONTEÚDO deve ser localizado');
+assert.strictEqual(foundConteudo.label?.textContent, 'CONTEÚDO', 'Texto do label deve ser CONTEÚDO');
+assert.strictEqual(foundConteudo.textareaId, 'formRegistroAula:j_idt147:1:j_idt151', 'Deve identificar o textarea específico de Conteúdo');
+assert.strictEqual(foundConteudo.textarea?.id, 'formRegistroAula:j_idt147:1:j_idt151', 'Instância do textarea deve ser a do Conteúdo');
+assert.strictEqual(foundConteudo.iframe, editor1Iframe, 'Iframe retornado deve ser o do editor de Conteúdo');
+
+assert.notStrictEqual(foundConteudo.textareaId, 'formRegistroAula:j_idt147:0:j_idt151', 'Não deve selecionar o editor de Metodologia');
+assert.notStrictEqual(foundConteudo.textareaId, 'formRegistroAula:j_idt147:2:j_idt151', 'Não deve selecionar o editor de Recursos');
+assert.notStrictEqual(foundConteudo.textareaId, 'formRegistroAula:j_idt147:3:j_idt151', 'Não deve selecionar o editor de BNCC');
+console.log(`✅ [TEST 15] Editor CONTEÚDO localizado com precisão entre 4 editores (ID: ${foundConteudo.textareaId})`);
+
+// 16. Teste de Preenchimento Isolado: Altera CONTEÚDO e Preserva os Outros 3 Editores Intactos
+const testTopicText = 'Aula 1: Propriedades da igualdade\nAula 2: Resolução de problemas';
+setEditorValueByElements(foundConteudo, testTopicText);
+
+// O editor de Conteúdo deve estar preenchido com HTML preservando quebras de linha
+assert.strictEqual(
+  editor1Textarea.value,
+  '<p>Aula 1: Propriedades da igualdade</p><p>Aula 2: Resolução de problemas</p>',
+  'Textarea de Conteúdo deve ter o HTML com quebras'
+);
+assert.strictEqual(
+  editor1Iframe.contentDocument?.body?.innerHTML,
+  '<p>Aula 1: Propriedades da igualdade</p><p>Aula 2: Resolução de problemas</p>',
+  'Iframe visível do CKEditor deve ter o HTML com quebras'
+);
+
+// Os outros 3 editores devem permanecer COMPLETAMENTE VAZIOS / INTACTOS!
+assert.strictEqual(editor0Textarea.value, '', 'Editor de Metodologia deve permanecer inalterado');
+assert.strictEqual(editor0Iframe.contentDocument?.body?.innerHTML, '', 'Iframe de Metodologia deve permanecer inalterado');
+
+assert.strictEqual(editor2Textarea.value, '', 'Editor de Recursos Didáticos deve permanecer inalterado');
+assert.strictEqual(editor2Iframe.contentDocument?.body?.innerHTML, '', 'Iframe de Recursos Didáticos deve permanecer inalterado');
+
+assert.strictEqual(editor3Textarea.value, '', 'Editor de BNCC deve permanecer inalterado');
+assert.strictEqual(editor3Iframe.contentDocument?.body?.innerHTML, '', 'Iframe de BNCC deve permanecer inalterado');
+
+console.log('✅ [TEST 16] Preenchimento isolado confirmado: Conteúdo atualizado e os demais 3 editores preservados intactos!');
 
 console.log('--- TODOS OS TESTES PASSARAM COM SUCESSO! ---');

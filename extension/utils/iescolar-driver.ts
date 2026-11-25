@@ -663,6 +663,282 @@ export function buildIescolarPreview(
 }
 
 /**
+ * Injeta um script no contexto principal da página (MAIN world) para acessar window.CKEDITOR
+ */
+export function injectScriptToPage(code: string): void {
+  if (typeof document === 'undefined') return;
+  try {
+    const script = document.createElement('script');
+    script.textContent = code;
+    (document.head || document.documentElement).appendChild(script);
+    script.remove();
+  } catch (err) {
+    console.warn('[Professor Sync] Erro ao injetar script no contexto da página:', err);
+  }
+}
+
+/**
+ * Formata o texto de tópicos para HTML do CKEditor preservando quebras de linha
+ */
+export function formatTopicForEditorHtml(topic: string): string {
+  if (!topic) return '<p></p>';
+  const lines = topic.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length <= 1) {
+    return `<p>${topic.replace(/\n/g, '<br/>')}</p>`;
+  }
+  return lines.map(line => `<p>${line}</p>`).join('');
+}
+
+export interface ConteudoEditorElements {
+  label: HTMLElement | null;
+  container: HTMLElement | null;
+  textarea: HTMLTextAreaElement | null;
+  iframe: HTMLIFrameElement | null;
+  textareaId: string | null;
+}
+
+/**
+ * Localiza no formulário (#formRegistroAula) o bloco de um editor identificado pelo texto do seu label.
+ * Sobe até o div pai que contém o textarea oculto do JSF e o iframe.cke_wysiwyg_frame do CKEditor.
+ */
+export function findEditorBlockByLabel(
+  labelNames: string[],
+  rootElement?: HTMLElement | null
+): ConteudoEditorElements {
+  const root = rootElement || (typeof document !== 'undefined'
+    ? (document.querySelector('#formRegistroAula') || document.querySelector('form[id*="RegistroAula"]') || document.body)
+    : null);
+
+  if (!root) {
+    return { label: null, container: null, textarea: null, iframe: null, textareaId: null };
+  }
+
+  const allElements = Array.from(root.querySelectorAll<HTMLElement>('label, div.ui-outputlabel, span.ui-outputlabel, div, span, th, strong, b'));
+  let targetLabel: HTMLElement | null = null;
+
+  for (const name of labelNames) {
+    const targetUpper = name.trim().toUpperCase();
+    const targetNorm = normalizeText(name);
+
+    for (const el of allElements) {
+      const rawText = (el.textContent || '').trim().toUpperCase();
+      const normText = normalizeText(el.textContent || '');
+
+      if (rawText === targetUpper || rawText === `${targetUpper}:` || normText === targetNorm) {
+        if (el.tagName.toLowerCase() === 'label' || el.children.length <= 1) {
+          targetLabel = el;
+          break;
+        }
+      }
+    }
+    if (targetLabel) break;
+  }
+
+  // Fallback com startsWith
+  if (!targetLabel) {
+    for (const name of labelNames) {
+      const targetNorm = normalizeText(name);
+      for (const el of allElements) {
+        const normText = normalizeText(el.textContent || '');
+        if (normText.startsWith(targetNorm) && normText.length <= targetNorm.length + 8) {
+          if (el.tagName.toLowerCase() === 'label' || el.children.length <= 1) {
+            targetLabel = el;
+            break;
+          }
+        }
+      }
+      if (targetLabel) break;
+    }
+  }
+
+  if (!targetLabel) {
+    return { label: null, container: null, textarea: null, iframe: null, textareaId: null };
+  }
+
+  // Sobe para o div pai / container que contém o textarea oculto e o iframe do CKEditor
+  let container: HTMLElement | null = targetLabel.parentElement;
+  let textarea: HTMLTextAreaElement | null = null;
+  let iframe: HTMLIFrameElement | null = null;
+
+  let curr = container;
+  let depth = 0;
+  while (curr && depth < 6 && curr !== root) {
+    if (!textarea) textarea = curr.querySelector<HTMLTextAreaElement>('textarea');
+    if (!iframe) iframe = curr.querySelector<HTMLIFrameElement>('iframe.cke_wysiwyg_frame, iframe');
+    if (textarea && iframe) {
+      container = curr;
+      break;
+    }
+    curr = curr.parentElement;
+    depth++;
+  }
+
+  // Se o textarea está em container irmão do label
+  if (!textarea && targetLabel.parentElement) {
+    const parentContainer = targetLabel.parentElement.parentElement || targetLabel.parentElement;
+    textarea = parentContainer.querySelector<HTMLTextAreaElement>('textarea');
+    iframe = parentContainer.querySelector<HTMLIFrameElement>('iframe.cke_wysiwyg_frame, iframe');
+    if (textarea || iframe) {
+      container = parentContainer;
+    }
+  }
+
+  const textareaId = textarea ? textarea.id || textarea.name || null : null;
+
+  return {
+    label: targetLabel,
+    container,
+    textarea,
+    iframe,
+    textareaId,
+  };
+}
+
+/**
+ * Localiza no formulário (#formRegistroAula) o bloco específico do editor de Conteúdo:
+ * Encontra o label CONTEÚDO (sem atributo for) e seu container contendo o textarea oculto
+ * e o iframe.cke_wysiwyg_frame do CKEditor.
+ */
+export function findConteudoEditorElements(rootElement?: HTMLElement | null): ConteudoEditorElements {
+  return findEditorBlockByLabel(['CONTEÚDO', 'CONTEUDO', 'OBJETO DE CONHECIMENTO'], rootElement);
+}
+
+/**
+ * Aguarda o formulário e o CKEditor de Conteúdo ficarem prontos após atualização AJAX do PrimeFaces
+ */
+export async function waitForConteudoEditorReady(timeoutMs = 4000): Promise<ConteudoEditorElements> {
+  const startTime = Date.now();
+  while (Date.now() - startTime < timeoutMs) {
+    if (typeof document !== 'undefined') {
+      const isAjaxLoading = document.querySelector(
+        '.ui-loading, #ajaxStatus[style*="display: block"], .ui-blockui:not([style*="display: none"])'
+      );
+      if (!isAjaxLoading) {
+        const elements = findConteudoEditorElements();
+        if (elements.textarea || elements.iframe) {
+          if (elements.iframe) {
+            try {
+              if (elements.iframe.contentDocument?.body) {
+                return elements;
+              }
+            } catch {
+              return elements;
+            }
+          }
+          if (elements.textarea) {
+            return elements;
+          }
+        }
+      }
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  return findConteudoEditorElements();
+}
+
+/**
+ * Preenche um editor CKEditor isoladamente pela API e pelo DOM do iframe,
+ * sincronizando o textarea associado e mantendo os demais editores inalterados.
+ */
+export async function setEditorValueByElements(
+  elements: ConteudoEditorElements,
+  content: string
+): Promise<boolean> {
+  if (!elements.textarea && !elements.iframe) return false;
+
+  const formattedHtml = formatTopicForEditorHtml(content);
+
+  // 1. Injeta script no contexto principal (MAIN world) para acessar a API do CKEditor
+  if (elements.textareaId) {
+    const targetId = elements.textareaId;
+    const pageScript = `
+      (function() {
+        try {
+          var targetId = ${JSON.stringify(targetId)};
+          var html = ${JSON.stringify(formattedHtml)};
+          if (window.CKEDITOR && window.CKEDITOR.instances) {
+            var inst = window.CKEDITOR.instances[targetId];
+            if (inst) {
+              inst.setData(html, function() {
+                try { inst.updateElement(); } catch(e) {}
+              });
+              return;
+            }
+            for (var key in window.CKEDITOR.instances) {
+              if (key === targetId || key.indexOf(targetId) !== -1 || targetId.indexOf(key) !== -1) {
+                window.CKEDITOR.instances[key].setData(html, function() {
+                  try { window.CKEDITOR.instances[key].updateElement(); } catch(e) {}
+                });
+                return;
+              }
+            }
+          }
+        } catch(err) {
+          console.warn('[Professor Sync] Erro no script CKEditor da página:', err);
+        }
+      })();
+    `;
+    injectScriptToPage(pageScript);
+  }
+
+  // 2. Preenche diretamente no DOM do iframe do CKEditor (editor visível)
+  if (elements.iframe) {
+    try {
+      const doc = elements.iframe.contentDocument || elements.iframe.contentWindow?.document;
+      if (doc && doc.body) {
+        doc.body.innerHTML = formattedHtml;
+        doc.body.dispatchEvent(new Event('input', { bubbles: true }));
+        doc.body.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    } catch (e) {
+      console.warn('[Professor Sync] Acesso ao iframe do CKEditor:', e);
+    }
+  }
+
+  // 3. Sincroniza o Textarea associado do JSF
+  if (elements.textarea) {
+    elements.textarea.value = formattedHtml;
+    elements.textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    elements.textarea.dispatchEvent(new Event('change', { bubbles: true }));
+    elements.textarea.dispatchEvent(new Event('blur', { bubbles: true }));
+  }
+
+  return true;
+}
+
+/**
+ * Preenche o editor CKEditor de Conteúdo de forma isolada, sincronizando
+ * o textarea e conferindo o editor visível sem alterar os outros editores.
+ */
+export async function setConteudoInIescolarEditor(
+  combinedTopic: string,
+  rootElement?: HTMLElement | null
+): Promise<{ success: boolean; unmappedWarning?: string }> {
+  const elements = await waitForConteudoEditorReady(3500);
+
+  if (!elements.label && !elements.textarea && !elements.iframe) {
+    return {
+      success: false,
+      unmappedWarning: 'Campo de Conteúdo / Objeto de Conhecimento não localizado no formulário.',
+    };
+  }
+
+  const filled = await setEditorValueByElements(elements, combinedTopic);
+
+  // Destaca visualmente o container do editor de conteúdo
+  if (elements.container) {
+    elements.container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    elements.container.style.transition = 'box-shadow 0.3s ease';
+    elements.container.style.boxShadow = '0 0 12px rgba(52, 211, 153, 0.4)';
+    setTimeout(() => {
+      if (elements.container) elements.container.style.boxShadow = '';
+    }, 2500);
+  }
+
+  return { success: filled };
+}
+
+/**
  * Preenche no formulário do iEscolar rigorosamente UMA ÚNICA DATA por vez.
  * Não aciona o botão salvar: prepara os campos e deixa aberto para conferência do professor.
  */
@@ -707,7 +983,7 @@ export async function fillIescolarSingleDate(
     injectValue(dateInput, group.date);
     dateSet = true;
     // Aguarda processamento de eventos JSF / PrimeFaces
-    await new Promise(r => setTimeout(r, 400));
+    await new Promise(r => setTimeout(r, 600));
   } else {
     // Tenta clicar diretamente no dia do calendário inline PrimeFaces
     const dayNum = parseInt(group.date.split('/')[0], 10);
@@ -716,7 +992,7 @@ export async function fillIescolarSingleDate(
     if (matchedCell) {
       (matchedCell as HTMLElement).click();
       dateSet = true;
-      await new Promise(r => setTimeout(r, 600));
+      await new Promise(r => setTimeout(r, 800));
     }
   }
 
@@ -774,93 +1050,63 @@ export async function fillIescolarSingleDate(
     unmappedWarnings.push(`Seletor de quantidade de aulas não foi alterado automaticamente. Verifique se o formulário exige selecionar "${group.quantity} aulas" manualmente.`);
   }
 
-  // 5. Preenchimento do Conteúdo / Objeto de Conhecimento
-  let contentSet = false;
-
-  // Caso A: Editor Rico PrimeFaces (p:textEditor / Quill)
-  const quillEditor = document.querySelector<HTMLElement>('.ui-texteditor .ql-editor');
-  if (quillEditor) {
-    quillEditor.innerHTML = `<p>${group.combinedTopic.replace(/\n/g, '<br/>')}</p>`;
-    quillEditor.dispatchEvent(new Event('input', { bubbles: true }));
-    // Sincroniza com o input hidden do JSF
-    const container = quillEditor.closest('.ui-texteditor');
-    const hiddenInput = container?.querySelector<HTMLInputElement>('input[type="hidden"]');
-    if (hiddenInput) {
-      hiddenInput.value = quillEditor.innerHTML;
-      hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-    contentSet = true;
+  // 5. Preenchimento do Conteúdo / Objeto de Conhecimento (Localizado pelo label CONTEÚDO no formulário)
+  const conteudoResult = await setConteudoInIescolarEditor(group.combinedTopic);
+  if (!conteudoResult.success) {
+    return {
+      success: false,
+      message: conteudoResult.unmappedWarning || 'Campo de Conteúdo / Objeto de Conhecimento não localizado no formulário.',
+    };
   }
 
-  // Caso B: CKEditor (pe:ckEditor)
-  const win = window as any;
-  if (!contentSet && win.CKEDITOR && win.CKEDITOR.instances) {
-    for (const instName of Object.keys(win.CKEDITOR.instances)) {
-      if (instName.toLowerCase().includes('conteudo') || instName.toLowerCase().includes('objeto')) {
-        win.CKEDITOR.instances[instName].setData(group.combinedTopic.replace(/\n/g, '<br/>'));
-        contentSet = true;
-        break;
+  // 6. Preenchimento de Metodologia (opcional - somente se presente na planilha)
+  if (group.combinedMethodology) {
+    const metElements = findEditorBlockByLabel(['METODOLOGIA', 'METODOLOGIAS']);
+    if (metElements.textarea || metElements.iframe) {
+      await setEditorValueByElements(metElements, group.combinedMethodology);
+    } else {
+      const metArea = document.querySelector<HTMLTextAreaElement | HTMLInputElement>(
+        'textarea[id*="metodologia"], textarea[name*="metodologia"], input[id*="metodologia"]'
+      );
+      if (metArea) {
+        injectValue(metArea, group.combinedMethodology);
+      } else {
+        unmappedWarnings.push('Campo de Metodologia não encontrado como campo de texto livre no formulário.');
       }
     }
   }
 
-  // Caso C: Textarea nativo ou PrimeFaces (p:inputTextarea)
-  if (!contentSet) {
-    const textareas = Array.from(document.querySelectorAll<HTMLTextAreaElement>('textarea')).filter(
-      t => t.offsetParent !== null
-    );
-
-    const targetArea = textareas.find(t => {
-      const idOrName = (t.id + ' ' + (t.name || '') + ' ' + (t.getAttribute('placeholder') || '')).toLowerCase();
-      return idOrName.includes('conteudo') || idOrName.includes('objeto') || idOrName.includes('descricao') || idOrName.includes('aula');
-    }) || textareas[0];
-
-    if (targetArea) {
-      injectValue(targetArea, group.combinedTopic);
-      contentSet = true;
-    }
-  }
-
-  if (!contentSet) {
-    return {
-      success: false,
-      message: 'Campo de Conteúdo / Objeto de Conhecimento não localizado no formulário.',
-    };
-  }
-
-  // 6. Preenchimento de Metodologia (opcional)
-  if (group.combinedMethodology) {
-    const metArea = document.querySelector<HTMLTextAreaElement | HTMLInputElement>(
-      'textarea[id*="metodologia"], textarea[name*="metodologia"], input[id*="metodologia"]'
-    );
-    if (metArea) {
-      injectValue(metArea, group.combinedMethodology);
-    } else {
-      unmappedWarnings.push('Campo de Metodologia não encontrado como campo de texto livre no formulário.');
-    }
-  }
-
-  // 7. Recursos Didáticos (opcional)
+  // 7. Recursos Didáticos (opcional - somente se presente na planilha)
   if (group.combinedRecursos) {
-    const recArea = document.querySelector<HTMLTextAreaElement | HTMLInputElement>(
-      'textarea[id*="recurso"], textarea[name*="recurso"], textarea[id*="didatico"], input[id*="recurso"]'
-    );
-    if (recArea) {
-      injectValue(recArea, group.combinedRecursos);
+    const recElements = findEditorBlockByLabel(['RECURSOS DIDÁTICOS', 'RECURSOS DIDATICOS', 'RECURSOS']);
+    if (recElements.textarea || recElements.iframe) {
+      await setEditorValueByElements(recElements, group.combinedRecursos);
     } else {
-      unmappedWarnings.push('Campo de Recursos Didáticos não localizado na tela.');
+      const recArea = document.querySelector<HTMLTextAreaElement | HTMLInputElement>(
+        'textarea[id*="recurso"], textarea[name*="recurso"], textarea[id*="didatico"], input[id*="recurso"]'
+      );
+      if (recArea) {
+        injectValue(recArea, group.combinedRecursos);
+      } else {
+        unmappedWarnings.push('Campo de Recursos Didáticos não localizado na tela.');
+      }
     }
   }
 
-  // 8. BNCC (opcional)
+  // 8. BNCC (opcional - somente se presente na planilha)
   if (group.combinedBncc) {
-    const bnccArea = document.querySelector<HTMLTextAreaElement | HTMLInputElement>(
-      'textarea[id*="bncc"], input[id*="bncc"], [id*="habilidade"] input'
-    );
-    if (bnccArea) {
-      injectValue(bnccArea, group.combinedBncc);
+    const bnccElements = findEditorBlockByLabel(['HABILIDADES BNCC', 'BNCC', 'HABILIDADES']);
+    if (bnccElements.textarea || bnccElements.iframe) {
+      await setEditorValueByElements(bnccElements, group.combinedBncc);
     } else {
-      unmappedWarnings.push('Controle de Habilidades BNCC não localizado para preenchimento automático.');
+      const bnccArea = document.querySelector<HTMLTextAreaElement | HTMLInputElement>(
+        'textarea[id*="bncc"], input[id*="bncc"], [id*="habilidade"] input'
+      );
+      if (bnccArea) {
+        injectValue(bnccArea, group.combinedBncc);
+      } else {
+        unmappedWarnings.push('Controle de Habilidades BNCC não localizado para preenchimento automático.');
+      }
     }
   }
 
