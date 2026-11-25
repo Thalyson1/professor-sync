@@ -12,6 +12,7 @@ import {
   type SiageFetchedClass,
   type SiageAttendanceHistoryItem,
 } from '../../utils/siage-api';
+import type { IescolarDiaryItem } from '../../utils/iescolar-driver';
 import './style.css';
 
 interface StudentCallItem {
@@ -28,6 +29,7 @@ export default function App() {
   const [isLoadingClasses, setIsLoadingClasses] = useState(false);
   const [currentPlatform, setCurrentPlatform] = useState<'siage' | 'iescolar' | 'other'>('siage');
   const [iescolarDiary, setIescolarDiary] = useState<{ escola?: string; turma?: string; turno?: string; disciplina?: string; label: string } | null>(null);
+  const [iescolarDiaries, setIescolarDiaries] = useState<IescolarDiaryItem[]>([]);
 
   // Turmas Reais do SIAGE
   const [siageClasses, setSiageClasses] = useState<SiageFetchedClass[]>([]);
@@ -70,16 +72,19 @@ export default function App() {
     label: '1ª Série A - INFORMÁTICA • Linguagem de Programação I',
   });
 
-  // Carregar turmas, senha e plano Excel salvos do storage local ao abrir
+  // Carregar turmas, senha, plano Excel e diários do iEscolar salvos do storage local ao abrir
   useEffect(() => {
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-      chrome.storage.local.get(['siageClasses', 'siagePassword', 'savedPlan', 'savedSheets'], (result) => {
+      chrome.storage.local.get(['siageClasses', 'siagePassword', 'savedPlan', 'savedSheets', 'iescolarDiaries'], (result) => {
         if (result.siageClasses && Array.isArray(result.siageClasses) && result.siageClasses.length > 0) {
           const sanitized = filterValidClasses(result.siageClasses);
           setSiageClasses(sanitized);
           if (sanitized.length !== result.siageClasses.length) {
             chrome.storage.local.set({ siageClasses: sanitized });
           }
+        }
+        if (result.iescolarDiaries && Array.isArray(result.iescolarDiaries)) {
+          setIescolarDiaries(result.iescolarDiaries);
         }
         if (result.siagePassword) {
           setSiagePassword(result.siagePassword);
@@ -95,7 +100,6 @@ export default function App() {
       chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
         if (tab?.url?.includes('iescolaronline.com.br')) {
           setCurrentPlatform('iescolar');
-          setActiveTab('excel');
           if (tab.id) {
             chrome.tabs.sendMessage(tab.id, { action: 'CHECK_SYSTEM' }).then(res => {
               if (res?.diary) setIescolarDiary(res.diary);
@@ -123,6 +127,56 @@ export default function App() {
   const handleSyncClassesNow = async () => {
     setIsLoadingClasses(true);
     try {
+      // 1. Fluxo iEscolar Online (Marizópolis)
+      if (currentPlatform === 'iescolar') {
+        if (typeof chrome !== 'undefined' && chrome.tabs) {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tab?.id) {
+            const resp = await chrome.tabs.sendMessage(tab.id, { action: 'SYNC_IESCOLAR_DIARIES' }).catch(() => null);
+            if (!resp) {
+              alert('Não foi possível se comunicar com a página do iEscolar.\n\nPor favor, recarregue a página (F5) no navegador e tente novamente.');
+              return;
+            }
+
+            if (resp.status === 'success' && resp.diaries && resp.diaries.length > 0) {
+              setIescolarDiaries(resp.diaries);
+              if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+                chrome.storage.local.set({ iescolarDiaries: resp.diaries });
+              }
+              const summary = resp.diaries.map((d: any) => `• ${d.label}`).join('\n');
+              alert(`✅ ${resp.diaries.length} diário(s) sincronizado(s) com sucesso do iEscolar!\n\n${summary}`);
+              return;
+            }
+
+            if (resp.status === 'wrong_screen') {
+              alert(`⚠️ Tela Incorreta para Sincronização\n\n${resp.message}`);
+              return;
+            }
+
+            if (resp.status === 'loading') {
+              alert(`⏳ Página em Carregamento\n\n${resp.message}`);
+              return;
+            }
+
+            if (resp.status === 'empty') {
+              alert(`ℹ️ Nenhum Diário Encontrado\n\n${resp.message}`);
+              return;
+            }
+
+            if (resp.status === 'unauthenticated') {
+              alert(`🔒 Sessão Não Autenticada\n\n${resp.message}`);
+              return;
+            }
+
+            alert(resp.message || 'Nenhum diário encontrado no momento.');
+            return;
+          }
+        }
+        alert('Abra a página do iEscolar no navegador para sincronizar seus diários.');
+        return;
+      }
+
+      // 2. Fluxo SIAGE PB
       let classes = await fetchTeacherClassesFromSiage();
 
       if (!classes || classes.length === 0) {
@@ -146,7 +200,11 @@ export default function App() {
       }
     } catch (err) {
       console.error(err);
-      alert('Por favor, recarregue a página do SIAGE (F5) no seu navegador para ativar a conexão da extensão.');
+      if (currentPlatform === 'iescolar') {
+        alert('Por favor, recarregue a página do iEscolar (F5) no seu navegador para ativar a conexão da extensão.');
+      } else {
+        alert('Por favor, recarregue a página do SIAGE (F5) no seu navegador para ativar a conexão da extensão.');
+      }
     } finally {
       setIsLoadingClasses(false);
     }
@@ -572,76 +630,159 @@ Execute o código em Python, gere o arquivo "Planejamento_Anual_Completo.xlsx" c
           <>
             <button
               className="btn-secondary"
-              style={{ background: 'rgba(52, 211, 153, 0.1)', borderColor: 'rgba(52, 211, 153, 0.3)', color: '#34d399', marginBottom: '8px' }}
+              style={{
+                background: currentPlatform === 'iescolar' ? 'rgba(56, 189, 248, 0.1)' : 'rgba(52, 211, 153, 0.1)',
+                borderColor: currentPlatform === 'iescolar' ? 'rgba(56, 189, 248, 0.3)' : 'rgba(52, 211, 153, 0.3)',
+                color: currentPlatform === 'iescolar' ? '#38bdf8' : '#34d399',
+                marginBottom: '8px',
+              }}
               disabled={isLoadingClasses}
               onClick={handleSyncClassesNow}
             >
-              {isLoadingClasses ? '⏳ Sincronizando Turmas...' : '🔄 Sincronizar Minhas Turmas do SIAGE'}
+              {isLoadingClasses
+                ? (currentPlatform === 'iescolar' ? '⏳ Sincronizando Diários...' : '⏳ Sincronizando Turmas...')
+                : (currentPlatform === 'iescolar' ? '🔄 Sincronizar Meus Diários (iEscolar)' : '🔄 Sincronizar Minhas Turmas do SIAGE')}
             </button>
 
-            {siageClasses.length > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', padding: '0 4px' }}>
-                <span style={{ fontSize: '11px', color: '#34d399', fontWeight: 600 }}>
-                  📚 {siageClasses.length} turma(s) ativa(s)
-                </span>
-                <button
-                  style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: '10px', cursor: 'pointer' }}
-                  onClick={async () => {
-                    await clearSavedClasses();
-                    setSiageClasses([]);
-                    alert('Histórico de turmas limpo com sucesso.');
-                  }}
-                >
-                  🗑️ Limpar Lista
-                </button>
-              </div>
-            )}
-
-            {siageClasses.length > 0 ? (
-              siageClasses.map((cls, idx) => (
-                <div className="card" key={cls.id || idx}>
-                  <div className="card-header">
-                    <span className="card-title">{cls.name}</span>
-                    <span className="card-tag">{cls.studentCount ? `${cls.studentCount} Alunos` : 'Ativa'}</span>
-                  </div>
-                  <p style={{ fontSize: '12px', color: '#a1a1aa' }}>
-                    <strong>Disciplina:</strong> {cls.subjectName} {cls.room ? `(${cls.room})` : ''}
-                  </p>
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+            {/* Visualização iEscolar */}
+            {currentPlatform === 'iescolar' && (
+              <>
+                {iescolarDiaries.length > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', padding: '0 4px' }}>
+                    <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 600 }}>
+                      📚 {iescolarDiaries.length} diário(s) do iEscolar
+                    </span>
                     <button
-                      className="btn-primary"
+                      style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: '10px', cursor: 'pointer' }}
                       onClick={() => {
-                        setCallTurmaMeta({
-                          formacaoTurmaId: cls.id,
-                          componenteCurricularId: '',
-                          label: `${cls.name} • ${cls.subjectName}`,
-                        });
-                        setActiveTab('call');
+                        setIescolarDiaries([]);
+                        if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+                          chrome.storage.local.remove('iescolarDiaries');
+                        }
                       }}
                     >
-                      ⚡ Lançar Frequência
+                      🗑️ Limpar Lista
                     </button>
                   </div>
-                </div>
-              ))
-            ) : (
-              <div className="card">
-                <div className="card-header">
-                  <span className="card-title">1ª Série A — INFORMÁTICA</span>
-                  <span className="card-tag">Linguagem de Programação I</span>
-                </div>
-                <p style={{ fontSize: '12px', color: '#a1a1aa' }}>
-                  <strong>Horário:</strong> Terças-feiras (6º e 7º Tempos) • 21 Alunos.
-                </p>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-                  <button
-                    className="btn-primary"
-                    onClick={() => setActiveTab('call')}
-                  >
-                    ⚡ Lançar Frequência
-                  </button>
-                </div>
-              </div>
+                )}
+
+                {iescolarDiaries.length > 0 ? (
+                  iescolarDiaries.map((diary, idx) => (
+                    <div className="card" key={diary.id || idx}>
+                      <div className="card-header">
+                        <span className="card-title">{diary.serie} — {diary.turma}</span>
+                        <span
+                          className="card-tag"
+                          style={{
+                            background: 'rgba(56, 189, 248, 0.15)',
+                            color: '#38bdf8',
+                            border: '1px solid rgba(56, 189, 248, 0.3)',
+                          }}
+                        >
+                          {diary.code ? `Cód: ${diary.code}` : diary.turno}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '12px', color: '#a1a1aa', margin: '4px 0' }}>
+                        <strong>Disciplina:</strong> {diary.disciplina} • <strong>Turno:</strong> {diary.turno}
+                      </p>
+                      <div style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 600, marginBottom: '6px' }}>
+                        {diary.label}
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                        <button
+                          className="btn-primary"
+                          style={{ background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)' }}
+                          onClick={() => {
+                            setActiveTab('excel');
+                          }}
+                        >
+                          📊 Registro de Aula
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="card">
+                    <div className="card-header">
+                      <span className="card-title">Nenhum diário sincronizado</span>
+                      <span className="card-tag" style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8' }}>iEscolar</span>
+                    </div>
+                    <p style={{ fontSize: '12px', color: '#a1a1aa' }}>
+                      Abra <strong>Gerenciar Diários → Meus diários</strong> no iEscolar e clique no botão acima para listar todas as suas turmas.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Visualização SIAGE */}
+            {currentPlatform !== 'iescolar' && (
+              <>
+                {siageClasses.length > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', padding: '0 4px' }}>
+                    <span style={{ fontSize: '11px', color: '#34d399', fontWeight: 600 }}>
+                      📚 {siageClasses.length} turma(s) ativa(s)
+                    </span>
+                    <button
+                      style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: '10px', cursor: 'pointer' }}
+                      onClick={async () => {
+                        await clearSavedClasses();
+                        setSiageClasses([]);
+                        alert('Histórico de turmas limpo com sucesso.');
+                      }}
+                    >
+                      🗑️ Limpar Lista
+                    </button>
+                  </div>
+                )}
+
+                {siageClasses.length > 0 ? (
+                  siageClasses.map((cls, idx) => (
+                    <div className="card" key={cls.id || idx}>
+                      <div className="card-header">
+                        <span className="card-title">{cls.name}</span>
+                        <span className="card-tag">{cls.studentCount ? `${cls.studentCount} Alunos` : 'Ativa'}</span>
+                      </div>
+                      <p style={{ fontSize: '12px', color: '#a1a1aa' }}>
+                        <strong>Disciplina:</strong> {cls.subjectName} {cls.room ? `(${cls.room})` : ''}
+                      </p>
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                        <button
+                          className="btn-primary"
+                          onClick={() => {
+                            setCallTurmaMeta({
+                              formacaoTurmaId: cls.id,
+                              componenteCurricularId: '',
+                              label: `${cls.name} • ${cls.subjectName}`,
+                            });
+                            setActiveTab('call');
+                          }}
+                        >
+                          ⚡ Lançar Frequência
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="card">
+                    <div className="card-header">
+                      <span className="card-title">1ª Série A — INFORMÁTICA</span>
+                      <span className="card-tag">Linguagem de Programação I</span>
+                    </div>
+                    <p style={{ fontSize: '12px', color: '#a1a1aa' }}>
+                      <strong>Horário:</strong> Terças-feiras (6º e 7º Tempos) • 21 Alunos.
+                    </p>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                      <button
+                        className="btn-primary"
+                        onClick={() => setActiveTab('call')}
+                      >
+                        ⚡ Lançar Frequência
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </>
         )}

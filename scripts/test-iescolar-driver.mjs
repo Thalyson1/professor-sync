@@ -7,6 +7,9 @@ import {
   detectIescolarDiaryInfo,
   extractRomanNumeral,
   normalizeText,
+  formatIescolarDiaryLabel,
+  detectIescolarScreen,
+  scrapeIescolarDiariesFromDOM,
 } from '../extension/utils/iescolar-driver.ts';
 
 console.log('--- INICIANDO TESTES DO DRIVER IESCOLAR (DADOS FICTÍCIOS) ---');
@@ -233,5 +236,145 @@ const matchNoSerie = findMatchingSheetForIescolar(sheetsOrderNormal, diaryNoSeri
 assert.strictEqual(matchNoSerie.requiresSelection, true, 'Sem Série identificada, deve exigir seleção obrigatória do professor');
 assert.strictEqual(matchNoSerie.isAmbiguous, true, 'Sem Série identificada, deve sinalizar ambiguidade');
 console.log(`✅ [TEST 7] Diário sem Série com abas [III, IV] -> requiresSelection=${matchNoSerie.requiresSelection} ("${matchNoSerie.reason}")`);
+
+// 8. Teste de Formatação de Rótulos de Diários do iEscolar
+const labelCiclo3 = formatIescolarDiaryLabel({
+  serie: 'CICLO III',
+  turma: 'UNICA',
+  turno: 'NOITE',
+  disciplina: 'LINGUAGEM MATEMÁTICA',
+});
+assert.strictEqual(labelCiclo3, 'Ciclo III · Única · Noite · Linguagem Matemática');
+console.log(`✅ [TEST 8.1] Formatação do Ciclo III: "${labelCiclo3}"`);
+
+const labelCiclo4 = formatIescolarDiaryLabel({
+  serie: 'CICLO IV',
+  turma: 'UNICA',
+  turno: 'NOITE',
+  disciplina: 'LINGUAGEM MATEMÁTICA',
+});
+assert.strictEqual(labelCiclo4, 'Ciclo IV · Única · Noite · Linguagem Matemática');
+console.log(`✅ [TEST 8.2] Formatação do Ciclo IV: "${labelCiclo4}"`);
+
+// 9. Teste de Sincronização em "Gerenciar Diários → Meus diários" (Entradas Distintas sem Planilha)
+const sampleMeusDiariosHtml = `
+  <div class="ui-panel-title">Gerenciar Diários - Meus diários</div>
+  <div class="ui-datatable">
+    <table>
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Série / Ciclo</th>
+          <th>Turma</th>
+          <th>Turno</th>
+          <th>Disciplina</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1042</td>
+          <td>CICLO III</td>
+          <td>UNICA</td>
+          <td>NOITE</td>
+          <td>LINGUAGEM MATEMÁTICA</td>
+          <td><button>Registro de Aula</button></td>
+        </tr>
+        <tr>
+          <td>1043</td>
+          <td>CICLO IV</td>
+          <td>UNICA</td>
+          <td>NOITE</td>
+          <td>LINGUAGEM MATEMÁTICA</td>
+          <td><button>Registro de Aula</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+`;
+
+const syncSuccess = scrapeIescolarDiariesFromDOM({
+  pathname: '/professor/gerenciardiario.xhtml',
+  html: sampleMeusDiariosHtml,
+});
+
+assert.strictEqual(syncSuccess.status, 'success', 'Status deve ser success');
+assert.strictEqual(syncSuccess.screen, 'gerenciar_diarios', 'Tela deve ser gerenciar_diarios');
+assert.strictEqual(syncSuccess.diaries?.length, 2, 'Devem ser extraídos 2 diários distintos');
+
+const [d1Result, d2Result] = syncSuccess.diaries || [];
+assert.strictEqual(d1Result.code, '1042', 'Código do diário 1 deve ser 1042');
+assert.strictEqual(d1Result.serie, 'CICLO III', 'Série do diário 1 deve ser CICLO III');
+assert.strictEqual(d1Result.ciclo, 'III', 'Ciclo romano do diário 1 deve ser III');
+assert.strictEqual(d1Result.label, 'Ciclo III · Única · Noite · Linguagem Matemática');
+
+assert.strictEqual(d2Result.code, '1043', 'Código do diário 2 deve ser 1043');
+assert.strictEqual(d2Result.serie, 'CICLO IV', 'Série do diário 2 deve ser CICLO IV');
+assert.strictEqual(d2Result.ciclo, 'IV', 'Ciclo romano do diário 2 deve ser IV');
+assert.strictEqual(d2Result.label, 'Ciclo IV · Única · Noite · Linguagem Matemática');
+
+assert.notStrictEqual(d1Result.id, d2Result.id, 'As duas turmas devem possuir identificadores distintos');
+assert.notStrictEqual(d1Result.label, d2Result.label, 'As duas turmas devem possuir labels distintas');
+console.log(`✅ [TEST 9] "Meus diários" sincronizou com sucesso 2 entradas distintas:\n   • ${d1Result.label} (Cód: ${d1Result.code})\n   • ${d2Result.label} (Cód: ${d2Result.code})`);
+
+// 10. Teste de Tela Incorreta: Usuário em Registro de Aula (/professor/novo/registroaula.xhtml)
+const sampleRegistroAulaHtml = `
+  <h1>Registro de Aula</h1>
+  <div class="ui-panel">Série:CICLO IV, Turma:UNICA, Turno:NOITE, Disciplinas:LINGUAGEM MATEMÁTICA.</div>
+  <input class="hasDatepicker" value="25/11/2026" />
+`;
+
+const syncWrongScreen = scrapeIescolarDiariesFromDOM({
+  pathname: '/professor/novo/registroaula.xhtml',
+  html: sampleRegistroAulaHtml,
+});
+
+assert.strictEqual(syncWrongScreen.status, 'wrong_screen', 'Deve retornar wrong_screen');
+assert.strictEqual(syncWrongScreen.screen, 'registro_aula', 'Tela identificada deve ser registro_aula');
+assert(syncWrongScreen.message.includes('Gerenciar Diários → Meus diários'), 'Mensagem deve orientar abrir Gerenciar Diários');
+assert(syncWrongScreen.currentDiary?.label.includes('LINGUAGEM MATEMÁTICA'), 'Deve identificar o diário atualmente aberto');
+console.log(`✅ [TEST 10] Tela incorreta (Registro de Aula) tratada com orientação: "${syncWrongScreen.message.replace(/\n/g, ' ')}"`);
+
+// 11. Teste de Estado de Carregamento (Loading AJAX)
+const syncLoading = scrapeIescolarDiariesFromDOM({
+  pathname: '/professor/gerenciardiario.xhtml',
+  html: '<div>Gerenciar Diários</div>',
+  isLoading: true,
+});
+
+assert.strictEqual(syncLoading.status, 'loading', 'Deve sinalizar status loading');
+assert(syncLoading.message.includes('carregando'), 'Mensagem deve indicar carregamento');
+console.log(`✅ [TEST 11] Estado de carregamento tratado: "${syncLoading.message}"`);
+
+// 12. Teste de Lista Realmente Vazia
+const sampleEmptyTableHtml = `
+  <div>Gerenciar Diários - Meus diários</div>
+  <table>
+    <tbody>
+      <tr class="ui-datatable-empty-message">
+        <td>Nenhum registro encontrado.</td>
+      </tr>
+    </tbody>
+  </table>
+`;
+
+const syncEmpty = scrapeIescolarDiariesFromDOM({
+  pathname: '/professor/gerenciardiario.xhtml',
+  html: sampleEmptyTableHtml,
+});
+
+assert.strictEqual(syncEmpty.status, 'empty', 'Deve identificar lista vazia');
+assert.strictEqual(syncEmpty.diaries?.length, 0, 'Diários devem ser array vazio');
+assert(syncEmpty.message.includes('Nenhum diário encontrado'), 'Mensagem deve indicar que a lista está vazia');
+console.log(`✅ [TEST 12] Lista realmente vazia tratada: "${syncEmpty.message}"`);
+
+// 13. Teste de Sessão Não Autenticada / Login
+const syncLogin = scrapeIescolarDiariesFromDOM({
+  pathname: '/login.xhtml',
+  html: 'Informe seu usuário e senha para acessar o iEscolar',
+});
+
+assert.strictEqual(syncLogin.status, 'unauthenticated', 'Deve identificar sessão expirada');
+console.log(`✅ [TEST 13] Sessão não autenticada tratada: "${syncLogin.message}"`);
 
 console.log('--- TODOS OS TESTES PASSARAM COM SUCESSO! ---');

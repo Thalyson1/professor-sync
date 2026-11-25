@@ -23,6 +23,30 @@ export interface IescolarDiaryInfo {
   label: string;
 }
 
+export interface IescolarDiaryItem {
+  id: string;
+  code?: string;
+  serie: string;
+  ciclo?: string;
+  turma: string;
+  turno: string;
+  disciplina: string;
+  escola?: string;
+  label: string;
+  actionUrl?: string;
+}
+
+export type IescolarScreenType = 'gerenciar_diarios' | 'registro_aula' | 'frequencia' | 'login' | 'outro';
+
+export interface IescolarSyncResult {
+  status: 'success' | 'wrong_screen' | 'loading' | 'empty' | 'unauthenticated' | 'error';
+  screen: IescolarScreenType;
+  diaries?: IescolarDiaryItem[];
+  message: string;
+  targetMenuUrl?: string;
+  currentDiary?: IescolarDiaryInfo;
+}
+
 export interface IescolarSheetMatchResult {
   sheet: ParsedWorkbookSheet | null;
   isAmbiguous: boolean;
@@ -1351,5 +1375,394 @@ export function injectIescolarFloatingWidget() {
   });
 
   document.body.appendChild(widgetBtn);
+}
+
+/**
+ * Formata o rótulo legível do diário no padrão rigoroso:
+ * "Ciclo III · Única · Noite · Linguagem Matemática"
+ */
+export function formatIescolarDiaryLabel(item: {
+  serie?: string;
+  turma?: string;
+  turno?: string;
+  disciplina?: string;
+}): string {
+  const formatWord = (s: string) => {
+    if (!s) return '';
+    const clean = s.trim();
+    if (clean.toUpperCase() === 'UNICA') return 'Única';
+    
+    // Se for CICLO IV, Ciclo 4, etc.
+    const mCiclo = clean.match(/^ciclo\s+(.+)$/i);
+    if (mCiclo) {
+      return `Ciclo ${mCiclo[1].toUpperCase()}`;
+    }
+
+    // Title case padrão mantendo numerais romanos
+    return clean
+      .toLowerCase()
+      .split(' ')
+      .map(w => {
+        const up = w.toUpperCase();
+        if (['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'].includes(up)) {
+          return up;
+        }
+        if (['de', 'da', 'do', 'das', 'dos', 'e'].includes(w)) {
+          return w;
+        }
+        return w.charAt(0).toUpperCase() + w.slice(1);
+      })
+      .join(' ');
+  };
+
+  const serieFmt = formatWord(item.serie || '');
+  const turmaFmt = formatWord(item.turma || '');
+  const turnoFmt = formatWord(item.turno || '');
+  const discFmt = formatWord(item.disciplina || '');
+
+  const parts = [serieFmt, turmaFmt, turnoFmt, discFmt].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : 'Diário iEscolar';
+}
+
+/**
+ * Identifica em qual tela do iEscolar o usuário se encontra
+ */
+export function detectIescolarScreen(options?: { pathname?: string; fullText?: string }): IescolarScreenType {
+  const pathname = (options?.pathname || (typeof window !== 'undefined' ? window.location.pathname : '')).toLowerCase();
+  const fullText = (options?.fullText || (typeof document !== 'undefined' ? document.body?.innerText || '' : '')).toLowerCase();
+
+  if (pathname.includes('/login') || fullText.includes('informe seu usuário e senha') || (typeof document !== 'undefined' && document.querySelector('#formLogin, input[type="password"][id*="login"]'))) {
+    return 'login';
+  }
+
+  if (pathname.includes('registroaula') || (fullText.includes('registro de aula') && !fullText.includes('gerenciar diários') && !fullText.includes('meus diários'))) {
+    return 'registro_aula';
+  }
+
+  if (pathname.includes('frequencia') || (fullText.includes('lançamento de frequência') && !fullText.includes('gerenciar diários') && !fullText.includes('meus diários'))) {
+    return 'frequencia';
+  }
+
+  if (
+    pathname.includes('gerenciardiario') ||
+    pathname.includes('meusdiarios') ||
+    pathname.includes('diario') ||
+    fullText.includes('gerenciar diários') ||
+    fullText.includes('gerenciar diarios') ||
+    fullText.includes('meus diários') ||
+    fullText.includes('meus diarios')
+  ) {
+    return 'gerenciar_diarios';
+  }
+
+  return 'outro';
+}
+
+/**
+ * Lê a lista de diários em "Gerenciar Diários → Meus diários" no iEscolar
+ * Retorna as turmas identificadas ou a orientação caso o usuário esteja em outra tela.
+ */
+export function scrapeIescolarDiariesFromDOM(source?: {
+  pathname?: string;
+  html?: string;
+  rootElement?: HTMLElement;
+  isLoading?: boolean;
+}): IescolarSyncResult {
+  const pathname = source?.pathname || (typeof window !== 'undefined' ? window.location.pathname : '');
+  const fullText = source?.html || (typeof document !== 'undefined' ? document.body?.innerText : '') || '';
+
+  // 1. Identificar tela
+  const screen = detectIescolarScreen({
+    pathname,
+    fullText,
+  });
+
+  if (screen === 'login') {
+    return {
+      status: 'unauthenticated',
+      screen: 'login',
+      message: 'Sua sessão no iEscolar expirou ou não está autenticada. Faça login no portal e tente novamente.',
+    };
+  }
+
+  if (screen === 'registro_aula') {
+    const currentDiary = detectIescolarDiaryInfo(fullText);
+    return {
+      status: 'wrong_screen',
+      screen: 'registro_aula',
+      message: 'Você está na tela de Registro de Aula.\n\nPara sincronizar a lista completa de diários da sua conta:\n1. Acesse no menu do iEscolar: Gerenciar Diários → Meus diários\n2. Abra a extensão e clique em "Sincronizar Meus Diários".',
+      currentDiary,
+    };
+  }
+
+  if (screen === 'frequencia') {
+    return {
+      status: 'wrong_screen',
+      screen: 'frequencia',
+      message: 'Você está na tela de Frequência.\n\nPara sincronizar seus diários, acesse: Gerenciar Diários → Meus diários.',
+    };
+  }
+
+  // 2. Verificar se a tela está carregando (AJAX PrimeFaces)
+  let isLoading = Boolean(source?.isLoading);
+  if (!isLoading && typeof document !== 'undefined') {
+    const loadingEl = document.querySelector('.ui-loading, #ajaxStatus[style*="display: block"], .ui-blockui:not([style*="display: none"]), .ui-dialog-visible[id*="loading"]');
+    if (loadingEl) isLoading = true;
+  }
+
+  if (isLoading) {
+    return {
+      status: 'loading',
+      screen: 'gerenciar_diarios',
+      message: 'O iEscolar ainda está carregando a lista de diários. Aguarde um instante e tente novamente.',
+    };
+  }
+
+  // 3. Extrair Diários da Tabela ou Painéis
+  const diaries: IescolarDiaryItem[] = [];
+
+  // Modo A: Inspeção do DOM vivo no navegador
+  if (typeof document !== 'undefined' && !source?.html) {
+    const root = source?.rootElement || document.body;
+    const tables = Array.from(root.querySelectorAll<HTMLTableElement>('.ui-datatable table, .p-datatable table, table'));
+
+    for (const table of tables) {
+      if (table.classList.contains('ui-datepicker-calendar')) continue;
+
+      const thead = table.querySelector('thead');
+      const headerThs = thead ? Array.from(thead.querySelectorAll('th')) : [];
+      const headerNames = headerThs.map(th => normalizeText(th.textContent || ''));
+
+      const colCode = headerNames.findIndex(h => h.includes('cod') || h.includes('codigo') || h.includes('diario') || h === 'id');
+      const colSerie = headerNames.findIndex(h => h.includes('serie') || h.includes('ciclo') || h.includes('etapa') || h.includes('ano'));
+      const colTurma = headerNames.findIndex(h => h.includes('turma'));
+      const colTurno = headerNames.findIndex(h => h.includes('turno') || h.includes('periodo'));
+      const colDisc = headerNames.findIndex(h => h.includes('disciplina') || h.includes('componente') || h.includes('materia'));
+      const colEscola = headerNames.findIndex(h => h.includes('escola') || h.includes('unidade'));
+
+      const rows = Array.from(table.querySelectorAll('tbody tr'));
+      for (const row of rows) {
+        if (row.classList.contains('ui-datatable-empty-message')) continue;
+        const rowText = row.textContent || '';
+        if (rowText.toLowerCase().includes('nenhum registro') || rowText.toLowerCase().includes('nenhum diário')) continue;
+
+        const cells = Array.from(row.querySelectorAll('td'));
+        if (cells.length === 0) continue;
+
+        let code = colCode !== -1 && cells[colCode] ? cells[colCode].textContent?.trim() : '';
+        let serie = colSerie !== -1 && cells[colSerie] ? cells[colSerie].textContent?.trim() : '';
+        let turma = colTurma !== -1 && cells[colTurma] ? cells[colTurma].textContent?.trim() : '';
+        let turno = colTurno !== -1 && cells[colTurno] ? cells[colTurno].textContent?.trim() : '';
+        let disciplina = colDisc !== -1 && cells[colDisc] ? cells[colDisc].textContent?.trim() : '';
+        let escola = colEscola !== -1 && cells[colEscola] ? cells[colEscola].textContent?.trim() : '';
+
+        // Fallbacks por texto da linha
+        if (!serie) {
+          const mSerie = rowText.match(/(?:Séries?|Series?|Ciclos?|Etapas?)\s*[:\-]?\s*([^•\n\r\t,]+)/i)
+            || rowText.match(/\b(CICLO\s*(?:I{1,3}|IV|V|VI|VII|VIII|IX|X|\d+))\b/i)
+            || rowText.match(/\b(\d+[ºª°]?\s*(?:Ano|Série))\b/i);
+          if (mSerie) serie = (mSerie[1] || mSerie[0]).trim();
+        }
+
+        if (!turma) {
+          const mTurma = rowText.match(/(?:Turmas?)\s*[:\-]?\s*([^•\n\r\t,]+)/i)
+            || rowText.match(/\b(UNICA|ÚNICA|[A-D]|\d+[ºª°]?\s*[A-Z])\b/i);
+          if (mTurma) turma = (mTurma[1] || mTurma[0]).trim();
+        }
+
+        if (!turno) {
+          const mTurno = rowText.match(/(?:Turnos?)\s*[:\-]?\s*([^•\n\r\t,]+)/i)
+            || rowText.match(/\b(Manhã|Matutino|Tarde|Vespertino|Noite|Noturno|Integral)\b/i);
+          if (mTurno) turno = (mTurno[1] || mTurno[0]).trim();
+        }
+
+        if (!disciplina) {
+          const mDisc = rowText.match(/(?:Disciplinas?|Componentes?\s*(?:Curriculares?)?)\s*[:\-]?\s*([^•\n\r\t,]+)/i);
+          if (mDisc) {
+            disciplina = mDisc[1].trim();
+          } else {
+            const common = ['Linguagem Matemática', 'Pensamento Computacional', 'Informática', 'Matemática', 'Língua Portuguesa', 'História', 'Geografia', 'Ciências', 'Artes', 'Educação Física', 'Inglês', 'Robótica'];
+            for (const c of common) {
+              if (normalizeText(rowText).includes(normalizeText(c))) {
+                disciplina = c;
+                break;
+              }
+            }
+          }
+        }
+
+        if (!code) {
+          const mCode = rowText.match(/(?:Cód(?:igo)?\.?|Diário\s*(?:n[º°])?|ID)\s*[:\-]?\s*([0-9A-Za-z\-]+)/i);
+          if (mCode) {
+            code = mCode[1];
+          } else if (cells.length > 0 && /^\d+$/.test((cells[0].textContent || '').trim())) {
+            code = (cells[0].textContent || '').trim();
+          }
+        }
+
+        if (disciplina || serie) {
+          const ciclo = extractRomanNumeral(serie) || extractRomanNumeral(turma) || undefined;
+          const label = formatIescolarDiaryLabel({ serie, turma, turno, disciplina });
+          const id = code || `${normalizeText(serie)}-${normalizeText(turma)}-${normalizeText(disciplina)}`;
+
+          if (!diaries.some(d => d.id === id || d.label === label)) {
+            diaries.push({
+              id,
+              code: code || undefined,
+              serie: serie || 'Série Regular',
+              ciclo,
+              turma: turma || 'Única',
+              turno: turno || 'Noite',
+              disciplina: disciplina || 'Disciplina Regular',
+              escola: escola || undefined,
+              label,
+            });
+          }
+        }
+      }
+    }
+
+    // Se não encontrou por tabela, tenta cards / panels
+    if (diaries.length === 0) {
+      const cards = Array.from(root.querySelectorAll('.ui-panel, .ui-card, .ui-dataview-row'));
+      for (const card of cards) {
+        const text = card.textContent || '';
+        if (text.length < 10) continue;
+        const serie = (text.match(/\b(CICLO\s*(?:I{1,3}|IV|V|VI|VII|VIII|IX|X|\d+)|\d+[ºª°]?\s*Ano)\b/i) || [])[0] || '';
+        const turma = (text.match(/\b(UNICA|ÚNICA|[A-D])\b/i) || [])[0] || 'Única';
+        const turno = (text.match(/\b(Noite|Manhã|Tarde|Vespertino|Matutino|Noturno|Integral)\b/i) || [])[0] || 'Noite';
+        const mDisc = text.match(/(?:Disciplinas?|Componentes?)\s*[:\-]?\s*([^•\n\r\t,]+)/i);
+        let disciplina = mDisc ? mDisc[1].trim() : '';
+        if (!disciplina) {
+          const common = ['Linguagem Matemática', 'Pensamento Computacional', 'Informática', 'Matemática', 'Língua Portuguesa'];
+          for (const c of common) {
+            if (normalizeText(text).includes(normalizeText(c))) {
+              disciplina = c;
+              break;
+            }
+          }
+        }
+        const mCode = text.match(/(?:Cód(?:igo)?\.?|Diário|ID)\s*[:\-]?\s*([0-9A-Za-z\-]+)/i);
+        const code = mCode ? mCode[1] : undefined;
+
+        if (disciplina || serie) {
+          const ciclo = extractRomanNumeral(serie) || undefined;
+          const label = formatIescolarDiaryLabel({ serie, turma, turno, disciplina });
+          const id = code || `${normalizeText(serie)}-${normalizeText(turma)}-${normalizeText(disciplina)}`;
+          if (!diaries.some(d => d.id === id || d.label === label)) {
+            diaries.push({
+              id,
+              code,
+              serie: serie || 'Ciclo Indefinido',
+              ciclo,
+              turma,
+              turno,
+              disciplina: disciplina || 'Disciplina',
+              label,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Modo B: Parser para source.html em testes unitários ou DOM isolado
+  if (source?.html && diaries.length === 0) {
+    const rawHtml = source.html;
+    const rowMatches = rawHtml.match(/<tr[\s\S]*?<\/tr>/gi) || [];
+    for (const rowHtml of rowMatches) {
+      if (rowHtml.includes('<th') || rowHtml.includes('ui-datatable-empty-message') || rowHtml.toLowerCase().includes('nenhum registro')) continue;
+      const strippedText = rowHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (strippedText.length < 5) continue;
+
+      let code = '';
+      let serie = '';
+      let turma = '';
+      let turno = '';
+      let disciplina = '';
+
+      // Tenta extrair diretamente das células <td> se houver 4 ou mais
+      const tdList = Array.from(rowHtml.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)).map(m => m[1].replace(/<[^>]+>/g, '').trim());
+      if (tdList.length >= 5) {
+        code = tdList[0];
+        serie = tdList[1];
+        turma = tdList[2];
+        turno = tdList[3];
+        disciplina = tdList[4];
+      } else if (tdList.length === 4) {
+        serie = tdList[0];
+        turma = tdList[1];
+        turno = tdList[2];
+        disciplina = tdList[3];
+      } else {
+        const mCode = strippedText.match(/(?:Cód(?:igo)?\.?|Diário|ID)\s*[:\-]?\s*([0-9A-Za-z\-]+)/i)
+          || rowHtml.match(/<td>\s*(\d{2,10})\s*<\/td>/i);
+        if (mCode) code = mCode[1];
+
+        const mSerie = strippedText.match(/\b(CICLO\s*(?:I{1,3}|IV|V|VI|VII|VIII|IX|X|\d+))\b/i)
+          || strippedText.match(/(?:Séries?|Series?|Ciclos?|Etapas?)\s*[:\-]?\s*([^•\n\r\t,]+)/i);
+        if (mSerie) serie = (mSerie[1] || mSerie[0]).trim();
+
+        const mTurma = strippedText.match(/\b(UNICA|ÚNICA|[A-D])\b/i)
+          || strippedText.match(/(?:Turmas?)\s*[:\-]?\s*([^•\n\r\t,]+)/i);
+        if (mTurma) turma = (mTurma[1] || mTurma[0]).trim();
+
+        const mTurno = strippedText.match(/\b(Noite|Manhã|Tarde|Vespertino|Matutino|Noturno|Integral)\b/i)
+          || strippedText.match(/(?:Turnos?)\s*[:\-]?\s*([^•\n\r\t,]+)/i);
+        if (mTurno) turno = (mTurno[1] || mTurno[0]).trim();
+
+        const mDisc = strippedText.match(/(?:Disciplinas?|Componentes?)\s*[:\-]?\s*([^•\n\r\t,]+)/i);
+        if (mDisc) {
+          disciplina = mDisc[1].trim();
+        } else {
+          const common = ['Linguagem Matemática', 'Pensamento Computacional', 'Informática', 'Matemática', 'Língua Portuguesa'];
+          for (const c of common) {
+            if (normalizeText(strippedText).includes(normalizeText(c))) {
+              disciplina = c;
+              break;
+            }
+          }
+        }
+      }
+
+      if (disciplina || serie) {
+        const ciclo = extractRomanNumeral(serie) || extractRomanNumeral(turma) || undefined;
+        const label = formatIescolarDiaryLabel({ serie, turma, turno, disciplina });
+        const id = code || `${normalizeText(serie)}-${normalizeText(turma)}-${normalizeText(disciplina)}`;
+        if (!diaries.some(d => d.id === id || d.label === label)) {
+          diaries.push({
+            id,
+            code: code || undefined,
+            serie: serie || 'Série Regular',
+            ciclo,
+            turma: turma || 'Única',
+            turno: turno || 'Noite',
+            disciplina: disciplina || 'Disciplina Regular',
+            label,
+          });
+        }
+      }
+    }
+  }
+
+  if (diaries.length === 0) {
+    const rawContent = (source?.html || (typeof document !== 'undefined' ? document.body?.innerText : '') || '').toLowerCase();
+    const isEmptyTable = rawContent.includes('nenhum registro') || rawContent.includes('nenhum diário') || rawContent.includes('não há diários');
+    return {
+      status: 'empty',
+      screen: 'gerenciar_diarios',
+      diaries: [],
+      message: isEmptyTable
+        ? 'Nenhum diário encontrado atribuído ao seu usuário nesta unidade escolar.'
+        : 'Nenhum diário foi identificado na página atual de Meus Diários.',
+    };
+  }
+
+  return {
+    status: 'success',
+    screen: 'gerenciar_diarios',
+    diaries,
+    message: `${diaries.length} diário(s) encontrado(s) e sincronizado(s) com sucesso do iEscolar!`,
+  };
 }
 

@@ -25,6 +25,7 @@ import {
   showIescolarPreviewModal,
   detectIescolarDiaryInfo,
   showIescolarToast,
+  scrapeIescolarDiariesFromDOM,
 } from '../utils/iescolar-driver';
 import type { ParsedWorkbookSheet } from '../utils/excel-parser';
 
@@ -67,6 +68,12 @@ function setupIescolarMessageListeners() {
       if (message.action === 'CHECK_SYSTEM') {
         const diary = detectIescolarDiaryInfo();
         sendResponse({ system: 'iescolar', diary });
+        return true;
+      }
+
+      if (message.action === 'SYNC_IESCOLAR_DIARIES' || message.action === 'SYNC_TURMAS') {
+        const result = scrapeIescolarDiariesFromDOM();
+        sendResponse(result);
         return true;
       }
 
