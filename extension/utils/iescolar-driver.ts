@@ -14,11 +14,21 @@ import type { ParsedLessonRow, ParsedWorkbookSheet } from './excel-parser';
 
 export interface IescolarDiaryInfo {
   escola?: string;
+  serie?: string;
+  ciclo?: string;
   turma?: string;
   turno?: string;
   disciplina?: string;
   anoLetivo?: string;
   label: string;
+}
+
+export interface IescolarSheetMatchResult {
+  sheet: ParsedWorkbookSheet | null;
+  isAmbiguous: boolean;
+  requiresSelection: boolean;
+  score: number;
+  reason?: string;
 }
 
 export type IescolarPreviewStatus =
@@ -110,57 +120,140 @@ export function normalizeText(str: string): string {
 }
 
 /**
- * Detecta o diário aberto na tela do iEscolar
- * (Procura Escola Batista, turma, turno e disciplina nos cabeçalhos, painéis e breadcrumbs)
+ * Extrai numerais romanos (ex: "IV", "III", "II", "I") ou numerais arábicos de ciclos
+ * a partir de nomes de abas, séries ou títulos (ex: "CICLO IV", "Linguagem Matemática - IV", "Ciclo 4")
  */
-export function detectIescolarDiaryInfo(): IescolarDiaryInfo {
+export function extractRomanNumeral(str: string): string | null {
+  if (!str) return null;
+  // Casos como: "CICLO IV", "Linguagem Matemática - IV", " - IV", " - III", "IV", "III"
+  // Ordenado por comprimento decrescente para evitar casamentos parciais
+  const mRoman = str.match(/\b(VIII|VII|VI|III|II|IV|IX|V|X|I)\b/i);
+  if (mRoman) {
+    return mRoman[1].toUpperCase();
+  }
+  // Casos como: "Ciclo 4", "Ciclo 3", "Série 4"
+  const mArabic = str.match(/\b(?:ciclo|ano|série|serie|etapa)\s*([1-9]|10)\b/i);
+  if (mArabic) {
+    const num = parseInt(mArabic[1], 10);
+    const romans = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+    return romans[num] || null;
+  }
+  return null;
+}
+
+/**
+ * Detecta o diário aberto na tela do iEscolar
+ * (Lê Série/Ciclo, Turma, Turno e Disciplinas completas, ex: Série:CICLO IV, Turma:UNICA, Turno:NOITE, Disciplinas:LINGUAGEM MATEMÁTICA)
+ */
+export function detectIescolarDiaryInfo(sourceText?: string): IescolarDiaryInfo {
   let escola = '';
+  let serie = '';
   let turma = '';
   let turno = '';
   let disciplina = '';
 
-  const scopeClone = document.body.cloneNode(true) as HTMLElement;
-  scopeClone.querySelectorAll('script, style, noscript').forEach(el => el.remove());
+  let fullText = sourceText || '';
+  let headers = '';
 
-  const fullText = scopeClone.innerText || scopeClone.textContent || '';
-  const headers = Array.from(
-    scopeClone.querySelectorAll('h1, h2, h3, h4, h5, .ui-panel-title, .ui-card-title, .breadcrumb, .ui-breadcrumb, .page-title, th')
-  ).map(e => (e.textContent || '').trim()).join(' • ');
+  if (typeof document !== 'undefined' && document.body) {
+    const scopeClone = document.body.cloneNode(true) as HTMLElement;
+    scopeClone.querySelectorAll('script, style, noscript').forEach(el => el.remove());
 
-  // 1. Escola (ex: Escola Batista, Escola Municipal Batista, etc.)
+    if (!fullText) {
+      fullText = scopeClone.innerText || scopeClone.textContent || '';
+    }
+    headers = Array.from(
+      scopeClone.querySelectorAll('h1, h2, h3, h4, h5, .ui-panel-title, .ui-card-title, .breadcrumb, .ui-breadcrumb, .page-title, th')
+    ).map(e => (e.textContent || '').trim()).join(' • ');
+  }
+
+  // 1. Escola (ex: Escola Batista, Escola Municipal Batista)
   const escolaMatch = fullText.match(/(?:Escola\s*(?:Municipal)?\s*Batista|Escola\s*[^•\n\r,]+)/i);
   if (escolaMatch) {
     escola = escolaMatch[0].trim();
   }
 
-  // 2. Turma (ex: "6º Ano A", "6º A", "7ª Série B", "1º Ano", "3º Ano")
-  const turmaMatch = headers.match(/(\d[ºª°]?\s*(?:Ano|Série|Serie)\s*[A-Z]|\b\d[ºª°]?\s*[A-Z]\b)/i)
-    || fullText.match(/(?:Turma|Ano\/Turma)\s*[:\-]?\s*([0-9ºª°\sA-Za-z]+?)(?=\s*(?:Turno|Disciplina|Componente|Matrícula|$|\n|•))/i);
-  if (turmaMatch) {
-    turma = (turmaMatch[1] || turmaMatch[0]).replace(/\s+/g, ' ').trim();
-  }
+  // Função auxiliar de extração tolerante por chave e valor
+  const extractField = (keys: string[], targetText: string): string => {
+    for (const key of keys) {
+      const reg = new RegExp(
+        `(?:${key})\\s*[:\\-]?\\s*([^•\\n\\r\\t,]+?)(?=\\s*(?:Séries?|Series?|Ciclos?|Etapas?|Turmas?|Turnos?|Disciplinas?|Componentes?|Professores?|Salas?|Cargas?|Horários?|$|\\n|•|,))`,
+        'i'
+      );
+      const m = targetText.match(reg);
+      if (m && m[1]) {
+        const cleaned = m[1].replace(/^[^\w\s]+|[^\w\s]+$/g, '').trim();
+        if (cleaned.length >= 1 && cleaned.length < 90) return cleaned;
+      }
+    }
+    return '';
+  };
 
-  // 3. Turno (ex: Manhã, Tarde, Noite, Matutino, Vespertino, Integral)
-  const turnoMatch = fullText.match(/(?:Turno\s*[:\-]?\s*)(Manhã|Tarde|Noite|Matutino|Vespertino|Integral)/i)
-    || fullText.match(/\b(Manhã|Matutino|Tarde|Vespertino|Integral)\b/i);
-  if (turnoMatch) {
-    turno = turnoMatch[1] ? turnoMatch[1].trim() : turnoMatch[0].trim();
-  }
+  // 2. Série / Ciclo / Etapa (ex: "CICLO IV", "CICLO III", "6º ANO")
+  serie = extractField(['Séries?', 'Series?', 'Ciclos?', 'Etapas?'], fullText)
+    || extractField(['Séries?', 'Series?', 'Ciclos?', 'Etapas?'], headers);
 
-  // 4. Disciplina / Componente Curricular:
-  // Suporte a "Pensamento Computacional", "Informática", "Matemática", etc.
-  const discRegex = /(?:Disciplina|Componente\s*Curricular)\s*[:\-]?\s*([^•\n\r\t]+?)(?=\s*(?:Turno|Turma|Professor|Sala|Carga|Horário|$))/i;
-  const discMatch = fullText.match(discRegex) || headers.match(discRegex);
-  if (discMatch && discMatch[1]) {
-    const rawDisc = discMatch[1].replace(/\s+/g, ' ').trim();
-    if (rawDisc.length >= 2 && rawDisc.length < 80) {
-      disciplina = rawDisc;
+  if (!serie) {
+    const cicloDirect = fullText.match(/\b(CICLO\s*(?:I{1,3}|IV|V|VI|VII|VIII|IX|X|\d+))\b/i);
+    if (cicloDirect) {
+      serie = cicloDirect[1].toUpperCase();
     }
   }
 
-  // Fallback por disciplinas conhecidas
+  // 3. Turma (ex: "UNICA", "6º Ano A", "Turma Única")
+  turma = extractField(['Turmas?', 'Ano\\/Turma'], fullText)
+    || extractField(['Turmas?', 'Ano\\/Turma'], headers);
+
+  if (!turma) {
+    const turmaHeaderMatch = headers.match(/(\d[ºª°]?\s*(?:Ano|Série|Serie)\s*[A-Z]|\b\d[ºª°]?\s*[A-Z]\b)/i);
+    if (turmaHeaderMatch) {
+      turma = turmaHeaderMatch[1] || turmaHeaderMatch[0];
+    }
+  }
+
+  // 4. Turno (ex: "NOITE", "MANHÃ", "TARDE", "MATUTINO", "VESPERTINO")
+  turno = extractField(['Turnos?'], fullText) || extractField(['Turnos?'], headers);
+  if (!turno) {
+    const turnoDirect = fullText.match(/\b(Manhã|Matutino|Tarde|Vespertino|Noite|Noturno|Integral)\b/i);
+    if (turnoDirect) turno = turnoDirect[0].toUpperCase();
+  }
+
+  // 5. Disciplina / Disciplinas / Componente Curricular (ex: "LINGUAGEM MATEMÁTICA", "PENSAMENTO COMPUTACIONAL")
+  disciplina = extractField(['Disciplinas?', 'Componentes?\\s*Curriculares?'], fullText)
+    || extractField(['Disciplinas?', 'Componentes?\\s*Curriculares?'], headers);
+
+  // Fallback por varredura de elementos estruturados (<label>, <th>, etc.)
+  if (!serie || !turma || !turno || !disciplina) {
+    const labelNodes = Array.from(document.querySelectorAll('label, th, dt, strong, b, .ui-outputlabel'));
+    for (const node of labelNodes) {
+      const txt = (node.textContent || '').trim().toLowerCase();
+      const getVal = () => {
+        const sibling = node.nextElementSibling || node.parentElement?.querySelector('span, td, dd, div');
+        return sibling ? (sibling.textContent || '').trim() : '';
+      };
+      if (!serie && (txt.includes('série') || txt.includes('serie') || txt.includes('ciclo'))) {
+        const val = getVal();
+        if (val && !val.toLowerCase().includes('série') && val.length < 80) serie = val;
+      }
+      if (!turma && txt.includes('turma')) {
+        const val = getVal();
+        if (val && !val.toLowerCase().includes('turma') && val.length < 80) turma = val;
+      }
+      if (!turno && txt.includes('turno')) {
+        const val = getVal();
+        if (val && !val.toLowerCase().includes('turno') && val.length < 80) turno = val;
+      }
+      if (!disciplina && (txt.includes('disciplina') || txt.includes('componente'))) {
+        const val = getVal();
+        if (val && !val.toLowerCase().includes('disciplina') && val.length < 80) disciplina = val;
+      }
+    }
+  }
+
+  // Fallback por disciplinas comuns conhecidas caso a página não tenha prefixo claro
   if (!disciplina) {
     const commonDisciplines = [
+      'Linguagem Matemática',
       'Pensamento Computacional',
       'Informática',
       'Informatica',
@@ -185,21 +278,38 @@ export function detectIescolarDiaryInfo(): IescolarDiaryInfo {
     }
   }
 
-  const parts = [disciplina, turma, turno].filter(Boolean);
-  const label = parts.length > 0 ? parts.join(' • ') : (escola ? `${escola} • Diário Aberto` : 'Diário iEscolar Aberto');
+  // Extrai o ciclo/numeral romano se houver (ex: "IV" de "CICLO IV")
+  const ciclo = extractRomanNumeral(serie) || extractRomanNumeral(turma) || undefined;
 
-  return { escola, turma, turno, disciplina, label };
+  // Montagem da label completa para o professor conferir na prévia
+  const turmaDisplay = turma
+    ? (turma.toUpperCase() === 'UNICA' ? 'Turma Única' : `Turma ${turma}`)
+    : '';
+
+  const parts = [
+    disciplina,
+    serie,
+    turmaDisplay,
+    turno,
+  ].filter(Boolean);
+
+  const label = parts.length > 0
+    ? parts.join(' • ')
+    : (escola ? `${escola} • Diário Aberto` : 'Diário iEscolar Aberto');
+
+  return { escola, serie, ciclo, turma, turno, disciplina, label };
 }
 
 /**
  * Associa a aba correta da planilha com o diário aberto no iEscolar
+ * Diferencia rigorosamente ciclos e numerais romanos (ex: Ciclo III vs IV).
  */
 export function findMatchingSheetForIescolar(
   savedSheets: ParsedWorkbookSheet[],
   diaryInfo: IescolarDiaryInfo
-): { sheet: ParsedWorkbookSheet | null; isAmbiguous: boolean; score: number } {
+): IescolarSheetMatchResult {
   if (!savedSheets || savedSheets.length === 0) {
-    return { sheet: null, isAmbiguous: false, score: 0 };
+    return { sheet: null, isAmbiguous: false, requiresSelection: false, score: 0 };
   }
 
   // Filtra abas auxiliares
@@ -210,59 +320,121 @@ export function findMatchingSheetForIescolar(
 
   const candidates = lessonSheets.length > 0 ? lessonSheets : savedSheets;
   if (candidates.length === 1) {
-    return { sheet: candidates[0], isAmbiguous: false, score: 100 };
+    return { sheet: candidates[0], isAmbiguous: false, requiresSelection: false, score: 100 };
   }
 
-  const normTurma = normalizeText(diaryInfo.turma || '');
+  const diaryRoman = diaryInfo.ciclo
+    || extractRomanNumeral(diaryInfo.serie || '')
+    || extractRomanNumeral(diaryInfo.label);
+
   const normDisc = normalizeText(diaryInfo.disciplina || '');
+  const normSerie = normalizeText(diaryInfo.serie || '');
+  const normTurma = normalizeText(diaryInfo.turma || '');
   const normTurno = normalizeText(diaryInfo.turno || '');
 
   const scored = candidates.map(s => {
     let score = 0;
-    const combined = normalizeText(`${s.sheetName} ${s.sheetTitle || ''}`);
+    const sheetCombined = `${s.sheetName} ${s.sheetTitle || ''}`;
+    const normSheet = normalizeText(sheetCombined);
+    const sheetRoman = extractRomanNumeral(s.sheetName) || extractRomanNumeral(s.sheetTitle || '');
 
-    // Match de Disciplina
-    if (normDisc && combined.includes(normDisc)) {
-      score += 150;
-    } else if (normDisc) {
-      // Tokens da disciplina
-      const discWords = normDisc.split(' ').filter(w => w.length > 2);
-      for (const w of discWords) {
-        if (combined.includes(w)) score += 30;
+    // 1. MATCH DE NUMERAL ROMANO / CICLO (Peso Decisivo!)
+    if (diaryRoman) {
+      if (sheetRoman) {
+        if (sheetRoman === diaryRoman) {
+          score += 400; // Bônus decisivo pelo ciclo/série bater exatamente (ex: IV <-> IV, III <-> III)
+        } else {
+          score -= 500; // Penalidade decisiva por ciclo divergente (ex: IV vs III)!
+        }
+      } else {
+        // Diário tem ciclo explícito mas a aba não tem nenhum ciclo
+        score -= 50;
       }
     }
 
-    // Casamento especial: Informática vs Pensamento Computacional no 2º semestre
+    // 2. MATCH DA DISCIPLINA COMPLETA (ex: "LINGUAGEM MATEMÁTICA")
+    if (normDisc) {
+      if (normSheet.includes(normDisc)) {
+        score += 250;
+      } else {
+        const discWords = normDisc.split(' ').filter(w => w.length > 2);
+        let matchedCount = 0;
+        for (const w of discWords) {
+          if (normSheet.includes(w)) {
+            score += 40;
+            matchedCount++;
+          }
+        }
+        if (discWords.length > 0 && matchedCount === discWords.length) {
+          score += 60; // Bônus por casar todas as palavras
+        }
+      }
+    }
+
+    // Casamento especial de disciplina semestral: Informática vs Pensamento Computacional
     if (
-      (normDisc.includes('pensamento') && combined.includes('computacional')) ||
-      (normDisc.includes('computacional') && combined.includes('pensamento')) ||
-      (normDisc.includes('informatica') && combined.includes('informatica'))
+      (normDisc.includes('pensamento') && normSheet.includes('computacional')) ||
+      (normDisc.includes('computacional') && normSheet.includes('pensamento')) ||
+      (normDisc.includes('informatica') && normSheet.includes('informatica'))
     ) {
-      score += 120;
+      score += 150;
     }
 
-    // Match de Turma
-    if (normTurma) {
-      const turmaWords = normTurma.split(' ').filter(Boolean);
-      for (const tw of turmaWords) {
-        if (combined.includes(tw)) score += 40;
-      }
+    // 3. MATCH DA SÉRIE / CICLO TEXTUAL
+    if (normSerie && normSheet.includes(normSerie)) {
+      score += 80;
     }
 
-    // Match de Turno
-    if (normTurno && combined.includes(normTurno)) {
-      score += 25;
+    // 4. MATCH DE TURMA
+    if (normTurma && normTurma !== 'unica') {
+      if (normSheet.includes(normTurma)) score += 40;
+    } else if (normTurma === 'unica' && (normSheet.includes('unica') || normSheet.includes('turma unica'))) {
+      score += 20;
     }
 
-    return { sheet: s, score };
+    // 5. MATCH DE TURNO
+    if (normTurno && normSheet.includes(normTurno)) {
+      score += 30;
+    }
+
+    return { sheet: s, sheetRoman, score };
   }).sort((a, b) => b.score - a.score);
 
-  if (scored.length === 0 || scored[0].score <= 0) {
-    return { sheet: candidates[0], isAmbiguous: true, score: 0 };
+  const best = scored[0];
+  const second = scored[1];
+
+  // Identifica se há distinção de ciclos entre as abas candidatas (ex: aba III e aba IV)
+  const candidateRomans = new Set(candidates.map(s => extractRomanNumeral(s.sheetName)).filter(Boolean));
+  const hasMultipleCyclesInSheets = candidateRomans.size > 1;
+
+  // Se o diário NÃO tem ciclo/série identificado e as abas têm ciclos distintos:
+  const missingDiaryCycleWhenNeeded = !diaryRoman && hasMultipleCyclesInSheets;
+
+  // Se há empate de pontuação ou diferença muito estreita entre as melhores
+  const isScoreTie = Boolean(second && (best.score - second.score < 50));
+
+  // Se a pontuação do melhor for inválida
+  const isInvalidScore = best.score <= 0;
+
+  const requiresSelection = missingDiaryCycleWhenNeeded || isScoreTie || isInvalidScore;
+  const isAmbiguous = requiresSelection;
+
+  let reason = '';
+  if (missingDiaryCycleWhenNeeded) {
+    reason = 'Série/Ciclo não identificada no diário e a planilha possui múltiplas abas com ciclos (ex: III e IV).';
+  } else if (isScoreTie) {
+    reason = 'Empate de pontuação entre as abas da planilha.';
+  } else if (isInvalidScore) {
+    reason = 'Nenhuma aba atingiu pontuação mínima de compatibilidade.';
   }
 
-  const isAmbiguous = scored.length > 1 && (scored[0].score - scored[1].score < 30);
-  return { sheet: scored[0].sheet, isAmbiguous, score: scored[0].score };
+  return {
+    sheet: best.score > 0 ? best.sheet : candidates[0],
+    isAmbiguous,
+    requiresSelection,
+    score: best.score,
+    reason,
+  };
 }
 
 /**
@@ -715,6 +887,8 @@ export function showIescolarPreviewModal(
 
   let currentSheet = matchResult.sheet;
   let isAmbiguous = matchResult.isAmbiguous;
+  let requiresSelection = matchResult.requiresSelection;
+  let userExplicitlySelectedSheet = false;
 
   const overlay = document.createElement('div');
   overlay.id = 'ps-iescolar-modal-overlay';
@@ -734,6 +908,7 @@ export function showIescolarPreviewModal(
   `;
 
   const renderModal = () => {
+    const effectiveRequiresSelection = requiresSelection && !userExplicitlySelectedSheet;
     const previewGroups = currentSheet
       ? buildIescolarPreview(currentSheet.lessons, diaryInfo, registeredData)
       : [];
@@ -799,13 +974,17 @@ export function showIescolarPreviewModal(
         <div style="padding: 14px 18px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; background: #09090b;">
           
           <!-- Seletor de Aba da Planilha -->
-          <div style="background: #141416; padding: 10px; border-radius: 8px; border: 1px solid #27272a;">
+          <div style="background: #141416; padding: 10px; border-radius: 8px; border: 1px solid ${effectiveRequiresSelection ? '#eab308' : '#27272a'};">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
               <span style="font-size: 11px; color: #a1a1aa; font-weight: 600;">
                 📊 Aba da Planilha Vinculada:
               </span>
-              <span style="font-size: 11px; color: #34d399; font-weight: 700;">
-                ${currentSheet ? `${currentSheet.sheetName} (${currentSheet.lessons.length} aulas)` : 'Nenhuma aba carregada'}
+              <span style="font-size: 11px; color: ${effectiveRequiresSelection ? '#eab308' : '#34d399'}; font-weight: 700;">
+                ${userExplicitlySelectedSheet && currentSheet
+                  ? `✅ ${currentSheet.sheetName} (${currentSheet.lessons.length} aulas)`
+                  : (!effectiveRequiresSelection && currentSheet
+                    ? `${currentSheet.sheetName} (${currentSheet.lessons.length} aulas)`
+                    : 'Aguardando seleção manual')}
               </span>
             </div>
 
@@ -814,27 +993,41 @@ export function showIescolarPreviewModal(
                 width: 100%;
                 background: #09090b;
                 color: #f4f4f5;
-                border: 1px solid ${isAmbiguous ? '#eab308' : '#3f3f46'};
+                border: 1px solid ${effectiveRequiresSelection ? '#eab308' : (isAmbiguous ? '#eab308' : '#3f3f46')};
+                box-shadow: ${effectiveRequiresSelection ? '0 0 10px rgba(234, 179, 8, 0.3)' : 'none'};
                 border-radius: 6px;
-                padding: 6px 10px;
+                padding: 7px 10px;
                 font-size: 12px;
                 outline: none;
                 cursor: pointer;
               ">
+                ${effectiveRequiresSelection ? `
+                  <option value="" disabled selected>⚠️ Selecione a aba correspondente desta turma...</option>
+                ` : ''}
                 ${savedSheets.map(s => `
-                  <option value="${s.sheetName}" ${currentSheet && s.sheetName === currentSheet.sheetName ? 'selected' : ''}>
+                  <option value="${s.sheetName}" ${!effectiveRequiresSelection && currentSheet && s.sheetName === currentSheet.sheetName ? 'selected' : ''}>
                     ${s.sheetName} (${s.lessons?.length || 0} aulas)
                   </option>
                 `).join('')}
               </select>
             ` : ''}
 
-            ${isAmbiguous ? `
+            ${effectiveRequiresSelection ? `
+              <div style="margin-top: 8px; padding: 8px 10px; background: rgba(234, 179, 8, 0.12); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 6px;">
+                <div style="font-size: 11px; color: #fde047; font-weight: 700; display: flex; align-items: center; gap: 4px; margin-bottom: 2px;">
+                  <span>⚠️</span>
+                  <span>Seleção de Aba Obrigatória</span>
+                </div>
+                <div style="font-size: 10px; color: #fef08a; line-height: 1.35;">
+                  ${matchResult.reason || 'Série/Ciclo não identificada com exatidão ou múltiplos ciclos compatíveis. Selecione a aba no campo acima para habilitar o preenchimento das aulas.'}
+                </div>
+              </div>
+            ` : (isAmbiguous ? `
               <div style="margin-top: 6px; font-size: 10px; color: #fde047; display: flex; align-items: center; gap: 4px;">
                 <span>⚠️</span>
-                <span>Mais de uma aba compatível com a disciplina/turma. Por favor, confirme a aba desejada no seletor acima.</span>
+                <span>Mais de uma aba compatível. Confira a aba desejada no seletor acima.</span>
               </div>
-            ` : ''}
+            ` : '')}
           </div>
 
           <!-- Resumo de Auditoria -->
@@ -909,7 +1102,29 @@ export function showIescolarPreviewModal(
                       </span>
                     </div>
 
-                    ${isReady || isConf ? `
+                    ${effectiveRequiresSelection ? `
+                      <button
+                        type="button"
+                        disabled
+                        style="
+                          padding: 5px 12px;
+                          border-radius: 5px;
+                          background: #27272a;
+                          color: #71717a;
+                          border: 1px solid #3f3f46;
+                          font-size: 11px;
+                          font-weight: 700;
+                          cursor: not-allowed;
+                          display: flex;
+                          align-items: center;
+                          gap: 4px;
+                          opacity: 0.7;
+                        "
+                        title="Selecione explicitamente a aba da planilha no menu acima para habilitar o preenchimento"
+                      >
+                        🔒 Selecione a Aba Acima
+                      </button>
+                    ` : (isReady || isConf ? `
                       <button
                         type="button"
                         class="ps-iescolar-fill-btn"
@@ -933,7 +1148,7 @@ export function showIescolarPreviewModal(
                       </button>
                     ` : `
                       <span style="font-size: 10px; color: #71717a;">Não selecionável</span>
-                    `}
+                    `)}
                   </div>
 
                   <!-- Conteúdo Previsto -->
@@ -1001,6 +1216,7 @@ export function showIescolarPreviewModal(
         const found = savedSheets.find(s => s.sheetName === selectEl.value);
         if (found) {
           currentSheet = found;
+          userExplicitlySelectedSheet = true;
           isAmbiguous = false;
           renderModal();
         }
